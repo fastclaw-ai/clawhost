@@ -182,6 +182,13 @@ curl -X POST http://localhost:18080/bot/api/v1/bots/$BOT_ID/stop -H "Authorizati
 curl -X POST http://localhost:18080/bot/api/v1/bots/$BOT_ID/restart -H "Authorization: Bearer $API_TOKEN"
 curl -X DELETE http://localhost:18080/bot/api/v1/bots/$BOT_ID -H "Authorization: Bearer $API_TOKEN"
 ```
+### Web UI
+
+FastClaw includes a lightweight built-in web console for common API operations.
+
+- URL: `http://localhost:18080/ui`
+- Supports: health check, admin app create/list/reset-token, bot create/list/get/status/start/stop/restart/delete
+- Auth: provide admin token and app token in the page
 
 ### Local Subdomain Routing (Caddy)
 

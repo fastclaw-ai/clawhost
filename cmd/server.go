@@ -8,6 +8,7 @@ import (
 
 	v1 "github.com/fastclaw-ai/fastclaw/handler/api/v1"
 	"github.com/fastclaw-ai/fastclaw/handler/proxy"
+	"github.com/fastclaw-ai/fastclaw/handler/ui"
 	authmw "github.com/fastclaw-ai/fastclaw/middleware"
 	"github.com/fastclaw-ai/fastclaw/service/k8s"
 	"github.com/labstack/echo/v4"
@@ -160,6 +161,10 @@ func startServer() {
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})
 	})
+
+	// Built-in Web UI
+	e.GET("/ui", ui.Index)
+	e.GET("/ui/", ui.Index)
 
 	// Bot proxy routes (for {bot_id}.fastclaw.ai/*)
 	e.Any("/proxy/:bot_id", proxy.ProxyToBot)

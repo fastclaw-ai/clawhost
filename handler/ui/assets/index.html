@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FastClaw Console</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --card2: #1f2937;
+      --line: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --accent: #0284c7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color: var(--text);
+      background: radial-gradient(circle at top right, #1e293b 0%, var(--bg) 42%);
+    }
+    .wrap { max-width: 1160px; margin: 24px auto; padding: 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    .sub { color: var(--muted); margin-bottom: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; }
+    .card {
+      background: linear-gradient(180deg, var(--card2) 0%, var(--card) 100%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .card h2 { font-size: 16px; margin: 0 0 10px; }
+    .row { display: grid; gap: 8px; margin-bottom: 10px; }
+    .cols2 { grid-template-columns: 1fr 1fr; }
+    input, textarea, select, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0b1220;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: #0c4a6e;
+      border-color: #0ea5e9;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(1.08); }
+    .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .small { font-size: 12px; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    pre {
+      margin: 12px 0 0;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #020617;
+      overflow: auto;
+      max-height: 300px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; }
+    .toolbar { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
+    .pill { display: inline-block; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FastClaw Console</h1>
+    <div class="sub">Simple web UI for FastClaw API operations. Route: <span class="pill">/ui</span></div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <h2>Connection</h2>
+      <div class="row cols2">
+        <input id="baseUrl" placeholder="Base URL" value="" />
+        <button id="healthBtn">Check Health</button>
+      </div>
+      <div class="row cols2">
+        <input id="adminToken" placeholder="Admin token (for /admin endpoints)" />
+        <input id="appToken" placeholder="App token (for /bots endpoints)" />
+      </div>
+      <div class="row cols2">
+        <button id="saveAuthBtn">Save to LocalStorage</button>
+        <button id="clearAuthBtn">Clear LocalStorage</button>
+      </div>
+      <div id="healthStatus" class="small muted">Health status: unknown</div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Admin Apps</h2>
+        <div class="toolbar">
+          <input id="createAppName" placeholder="App name" />
+          <button id="createAppBtn">Create App</button>
+        </div>
+        <div class="row cols2" style="margin-top:8px;">
+          <input id="appIdForToken" placeholder="App ID for reset-token" />
+          <button id="resetAppTokenBtn">Reset App Token</button>
+        </div>
+        <div class="row">
+          <button id="listAppsBtn">List Apps</button>
+        </div>
+        <div class="muted">Create/List apps require admin token. Reset returns new app API token.</div>
+      </section>
+
+      <section class="card">
+        <h2>Create Bot</h2>
+        <div class="row cols2">
+          <input id="botUserId" placeholder="user_id (required)" />
+          <input id="botName" placeholder="name (required)" />
+        </div>
+        <div class="row cols2">
+          <input id="botSlug" placeholder="slug (optional)" />
+          <input id="botIdForAction" placeholder="bot_id for actions" />
+        </div>
+        <div class="row">
+          <textarea id="botConfigJson" placeholder='config JSON, e.g. {"model":"claude-sonnet-4-20250514","api_key":"..."}'></textarea>
+        </div>
+        <div class="row">
+          <button id="createBotBtn">Create Bot</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Bot Operations</h2>
+        <div class="row cols2">
+          <input id="queryUserId" placeholder="user_id for list bots" />
+          <button id="listBotsBtn">List Bots</button>
+        </div>
+        <div class="btns">
+          <button id="getBotBtn">Get</button>
+          <button id="statusBotBtn">Status</button>
+          <button id="deleteBotBtn">Delete</button>
+        </div>
+        <div class="btns" style="margin-top:8px;">
+          <button id="startBotBtn">Start</button>
+          <button id="stopBotBtn">Stop</button>
+          <button id="restartBotBtn">Restart</button>
+        </div>
+        <div class="muted" style="margin-top:8px;">Bot endpoints require app token and bot ownership.</div>
+      </section>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Response</h2>
+      <pre id="output">{}</pre>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Apps Snapshot</h2>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Status</th><th>Owner</th><th>Created</th></tr>
+        </thead>
+        <tbody id="appsTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Bots Snapshot</h2>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Slug</th><th>User</th><th>Status</th><th>Endpoint</th></tr>
+        </thead>
+        <tbody id="botsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const outputEl = document.getElementById("output");
+    const healthStatusEl = document.getElementById("healthStatus");
+    const appsTableBody = document.getElementById("appsTableBody");
+    const botsTableBody = document.getElementById("botsTableBody");
+
+    function byId(id) { return document.getElementById(id); }
+    function show(data) { outputEl.textContent = JSON.stringify(data, null, 2); }
+
+    function loadAuth() {
+      byId("baseUrl").value = localStorage.getItem("fc_base_url") || window.location.origin;
+      byId("adminToken").value = localStorage.getItem("fc_admin_token") || "";
+      byId("appToken").value = localStorage.getItem("fc_app_token") || "";
+    }
+
+    function saveAuth() {
+      localStorage.setItem("fc_base_url", byId("baseUrl").value.trim());
+      localStorage.setItem("fc_admin_token", byId("adminToken").value.trim());
+      localStorage.setItem("fc_app_token", byId("appToken").value.trim());
+      show({ message: "saved" });
+    }
+
+    function clearAuth() {
+      localStorage.removeItem("fc_base_url");
+      localStorage.removeItem("fc_admin_token");
+      localStorage.removeItem("fc_app_token");
+      loadAuth();
+      show({ message: "cleared" });
+    }
+
+    async function apiCall(path, method = "GET", token = "", body) {
+      const base = byId("baseUrl").value.trim().replace(/\/+$/, "");
+      const url = base + path;
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+      const options = { method, headers };
+      if (body !== undefined) options.body = JSON.stringify(body);
+      const resp = await fetch(url, options);
+      let payload;
+      try { payload = await resp.json(); } catch (error) { payload = { raw: await resp.text() }; }
+      return { status: resp.status, ok: resp.ok, url, payload };
+    }
+
+    function setHealth(ok, text) {
+      healthStatusEl.className = "small " + (ok ? "ok" : "bad");
+      healthStatusEl.textContent = "Health status: " + text;
+    }
+
+    function renderApps(apps) {
+      appsTableBody.innerHTML = "";
+      for (const app of apps || []) {
+        const row = document.createElement("tr");
+        row.innerHTML = "<td>" + (app.id || "") + "</td><td>" + (app.name || "") + "</td><td>" + (app.status || "") + "</td><td>" + (app.owner_email || "") + "</td><td>" + (app.created_at || "") + "</td>";
+        appsTableBody.appendChild(row);
+      }
+    }
+
+    function renderBots(bots) {
+      botsTableBody.innerHTML = "";
+      for (const bot of bots || []) {
+        const row = document.createElement("tr");
+        row.innerHTML = "<td>" + (bot.id || "") + "</td><td>" + (bot.slug || "") + "</td><td>" + (bot.user_id || "") + "</td><td>" + (bot.status || "") + "</td><td>" + (bot.endpoint || "") + "</td>";
+        botsTableBody.appendChild(row);
+      }
+    }
+
+    async function withOutput(promise) {
+      try {
+        const result = await promise;
+        show(result);
+        return result;
+      } catch (error) {
+        show({ error: String(error) });
+        return null;
+      }
+    }
+
+    byId("saveAuthBtn").addEventListener("click", saveAuth);
+    byId("clearAuthBtn").addEventListener("click", clearAuth);
+
+    byId("healthBtn").addEventListener("click", async () => {
+      const result = await withOutput(apiCall("/health"));
+      if (!result) return;
+      setHealth(result.ok, result.ok ? "ok" : "failed");
+    });
+
+    byId("createAppBtn").addEventListener("click", async () => {
+      const token = byId("adminToken").value.trim();
+      const name = byId("createAppName").value.trim();
+      const result = await withOutput(apiCall("/bot/api/v1/admin/apps", "POST", token, { name }));
+      if (!result) return;
+      const apiToken = result?.payload?.data?.api_token || "";
+      if (apiToken) byId("appToken").value = apiToken;
+    });
+
+    byId("listAppsBtn").addEventListener("click", async () => {
+      const token = byId("adminToken").value.trim();
+      const result = await withOutput(apiCall("/bot/api/v1/admin/apps", "GET", token));
+      const apps = result?.payload?.data;
+      if (Array.isArray(apps)) renderApps(apps);
+    });
+
+    byId("resetAppTokenBtn").addEventListener("click", async () => {
+      const token = byId("adminToken").value.trim();
+      const appId = byId("appIdForToken").value.trim();
+      const result = await withOutput(apiCall("/bot/api/v1/admin/apps/" + encodeURIComponent(appId) + "/reset-token", "POST", token));
+      const newToken = result?.payload?.data?.api_token;
+      if (newToken) byId("appToken").value = newToken;
+    });
+
+    byId("createBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const userId = byId("botUserId").value.trim();
+      const name = byId("botName").value.trim();
+      const slug = byId("botSlug").value.trim();
+      let config = null;
+      const configRaw = byId("botConfigJson").value.trim();
+      if (configRaw) {
+        try {
+          config = JSON.parse(configRaw);
+        } catch (error) {
+          show({ error: "Invalid config JSON", detail: String(error) });
+          return;
+        }
+      }
+
+      const body = { user_id: userId, name };
+      if (slug) body.slug = slug;
+      if (config) body.config = config;
+
+      const result = await withOutput(apiCall("/bot/api/v1/bots", "POST", token, body));
+      const botId = result?.payload?.data?.id;
+      if (botId) byId("botIdForAction").value = botId;
+    });
+
+    byId("listBotsBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const userId = byId("queryUserId").value.trim();
+      if (!userId) {
+        show({ error: "user_id is required for list bots" });
+        return;
+      }
+      const result = await withOutput(apiCall("/bot/api/v1/bots?user_id=" + encodeURIComponent(userId), "GET", token));
+      const bots = result?.payload?.data;
+      if (Array.isArray(bots)) renderBots(bots);
+    });
+
+    byId("getBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId), "GET", token));
+    });
+
+    byId("statusBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId) + "/status", "GET", token));
+    });
+
+    byId("startBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId) + "/start", "POST", token));
+    });
+
+    byId("stopBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId) + "/stop", "POST", token));
+    });
+
+    byId("restartBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId) + "/restart", "POST", token));
+    });
+
+    byId("deleteBotBtn").addEventListener("click", async () => {
+      const token = byId("appToken").value.trim();
+      const botId = byId("botIdForAction").value.trim();
+      await withOutput(apiCall("/bot/api/v1/bots/" + encodeURIComponent(botId), "DELETE", token));
+    });
+
+    loadAuth();
+  </script>
+</body>
+</html>
