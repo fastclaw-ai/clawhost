@@ -39,9 +39,16 @@ func InitDB() error {
 			host, user, password, database, port, sslmode, timezone,
 		)
 
+		// Disable prepared statements for connection pooling environments (pgx v5)
+		// This prevents "prepared statement already exists" errors when using poolers
+		// like Supabase Transaction Mode Pooler or PgBouncer in transaction mode
+		dsn += " default_query_exec_mode=exec"
+
 		var err error
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Info),
+			Logger:                 logger.Default.LogMode(logger.Info),
+			PrepareStmt:            false, // Disable prepared statement cache at GORM level
+			SkipDefaultTransaction: true,  // Improve performance by skipping default transactions
 		})
 		if err != nil {
 			initErr = fmt.Errorf("open db failed: %w", err)
