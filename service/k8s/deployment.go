@@ -23,7 +23,11 @@ func getShortID(botID string) string {
 }
 
 // imagePullPolicy returns PullAlways for "latest" tag, PullIfNotPresent otherwise.
+// In local dev mode, always use PullIfNotPresent to allow local images.
 func imagePullPolicy(image string) corev1.PullPolicy {
+	if viper.GetBool("kubernetes.local_dev") {
+		return corev1.PullIfNotPresent
+	}
 	// "foo:latest", "foo" (no tag defaults to latest), or "foo:Latest"
 	if !strings.Contains(image, ":") || strings.HasSuffix(strings.ToLower(image), ":latest") {
 		return corev1.PullAlways
@@ -87,8 +91,9 @@ type BotConfig struct {
 	Channels map[string]interface{}
 }
 
-func CreateDeployment(ctx context.Context, botID, userID, accessToken string, config *BotConfig) error {
-	client := GetClient()
+// buildDeploymentSpec builds the full Deployment object for a bot.
+// Shared by CreateDeployment and ReplaceDeployment to ensure consistency.
+func buildDeploymentSpec(botID, userID string, config *BotConfig) *appsv1.Deployment {
 	namespace := GetNamespace()
 	deploymentName := GetDeploymentName(botID)
 
@@ -104,10 +109,6 @@ func CreateDeployment(ctx context.Context, botID, userID, accessToken string, co
 	pvcName := viper.GetString("storage.pvc_name")
 	if pvcName == "" {
 		pvcName = "openclaw-shared-data"
-	}
-	basePath := viper.GetString("storage.base_path")
-	if basePath == "" {
-		basePath = "/openclaw-data"
 	}
 
 	cpuLimit := viper.GetString("openclaw.cpu_limit")
@@ -144,7 +145,7 @@ func CreateDeployment(ctx context.Context, botID, userID, accessToken string, co
 
 	replicas := int32(1)
 
-	deployment := &appsv1.Deployment{
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName,
 			Namespace: namespace,
@@ -166,138 +167,235 @@ func CreateDeployment(ctx context.Context, botID, userID, accessToken string, co
 						}
 						return nil
 					}(),
-					InitContainers: []corev1.Container{
-						{
-							Name:    "init-permissions",
-							Image:   "alpine:3.19",
-							Command: []string{"sh", "-c", "chown -R 1000:1000 /data && chmod -R 755 /data"},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "data",
-									MountPath: "/data",
-									SubPath:   botID,
+					InitContainers: func() []corev1.Container {
+						initCmd := "chown -R 1000:1000 /data && chmod -R 755 /data"
+						mounts := []corev1.VolumeMount{
+							{
+								Name:      "data",
+								MountPath: "/data",
+								SubPath:   botID,
+							},
+						}
+						if ChatClawEnabled() {
+							initCmd += " && chown -R 1000:1000 /chatclaw-data && chmod -R 755 /chatclaw-data"
+							mounts = append(mounts, corev1.VolumeMount{
+								Name:      "data",
+								MountPath: "/chatclaw-data",
+								SubPath:   botID + "/chatclaw-data",
+							})
+						}
+						return []corev1.Container{
+							{
+								Name:         "init-permissions",
+								Image:        "alpine:3.19",
+								Command:      []string{"sh", "-c", initCmd},
+								VolumeMounts: mounts,
+								SecurityContext: &corev1.SecurityContext{
+									RunAsUser:                func() *int64 { v := int64(0); return &v }(),
+									AllowPrivilegeEscalation: func() *bool { v := false; return &v }(),
+									ReadOnlyRootFilesystem:   func() *bool { v := true; return &v }(),
 								},
 							},
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:                func() *int64 { v := int64(0); return &v }(),
-								AllowPrivilegeEscalation: func() *bool { v := false; return &v }(),
-								ReadOnlyRootFilesystem:   func() *bool { v := true; return &v }(),
-							},
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:            "openclaw",
-							Image:           image,
-							ImagePullPolicy: imagePullPolicy(image),
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:                func() *int64 { v := int64(1000); return &v }(),
-								RunAsGroup:               func() *int64 { v := int64(1000); return &v }(),
-								AllowPrivilegeEscalation: func() *bool { v := false; return &v }(),
-							},
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "gateway",
-									ContainerPort: gatewayPort,
-									Protocol:      corev1.ProtocolTCP,
+						}
+					}(),
+					Containers: func() []corev1.Container {
+						containers := []corev1.Container{
+							{
+								Name:            "openclaw",
+								Image:           image,
+								ImagePullPolicy: imagePullPolicy(image),
+								SecurityContext: &corev1.SecurityContext{
+									RunAsUser:                func() *int64 { v := int64(1000); return &v }(),
+									RunAsGroup:               func() *int64 { v := int64(1000); return &v }(),
+									AllowPrivilegeEscalation: func() *bool { v := false; return &v }(),
 								},
-							},
-							// Write full config file before starting gateway
-							// Uses "openclaw" wrapper: prefers PVC-installed openclaw.mjs, falls back to built-in
-							Command: func() []string {
-								if config != nil && config.AccessToken != "" {
-									// Generate full config JSON (including models) and write before starting gateway
-									configJSON := buildOpenClawConfig(config, true)
-									return []string{"sh", "-c", fmt.Sprintf(`cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'
+								Ports: []corev1.ContainerPort{
+									{
+										Name:          "gateway",
+										ContainerPort: gatewayPort,
+										Protocol:      corev1.ProtocolTCP,
+									},
+								},
+								Command: func() []string {
+									if config != nil && config.AccessToken != "" {
+										configJSON := buildOpenClawConfig(config, true)
+										return []string{"sh", "-c", fmt.Sprintf(`cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'
 %s
 EOFCONFIG
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
-								}
-								return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}
-							}(),
-							Env: func() []corev1.EnvVar {
-								envs := []corev1.EnvVar{
+									}
+									return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}
+								}(),
+								Env: func() []corev1.EnvVar {
+									envs := []corev1.EnvVar{
+										{
+											Name:  "NODE_OPTIONS",
+											Value: fmt.Sprintf("--max-old-space-size=%d", nodeMaxOldSpaceSize),
+										},
+									}
+									if config != nil {
+										if config.APIKey != "" {
+											envs = append(envs, corev1.EnvVar{
+												Name:  "ANTHROPIC_API_KEY",
+												Value: config.APIKey,
+											})
+										}
+										if config.Model != "" {
+											envs = append(envs, corev1.EnvVar{
+												Name:  "CLAUDE_MODEL",
+												Value: config.Model,
+											})
+										}
+										if config.BaseURL != "" {
+											envs = append(envs, corev1.EnvVar{
+												Name:  "ANTHROPIC_BASE_URL",
+												Value: config.BaseURL,
+											})
+										}
+									}
+									return envs
+								}(),
+								VolumeMounts: []corev1.VolumeMount{
 									{
-										Name:  "NODE_OPTIONS",
-										Value: fmt.Sprintf("--max-old-space-size=%d", nodeMaxOldSpaceSize),
-									},
-								}
-								if config != nil {
-									if config.APIKey != "" {
-										envs = append(envs, corev1.EnvVar{
-											Name:  "ANTHROPIC_API_KEY",
-											Value: config.APIKey,
-										})
-									}
-									if config.Model != "" {
-										envs = append(envs, corev1.EnvVar{
-											Name:  "CLAUDE_MODEL",
-											Value: config.Model,
-										})
-									}
-									if config.BaseURL != "" {
-										envs = append(envs, corev1.EnvVar{
-											Name:  "ANTHROPIC_BASE_URL",
-											Value: config.BaseURL,
-										})
-									}
-								}
-								return envs
-							}(),
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "data",
-									MountPath: "/home/node/.openclaw",
-									SubPath:   botID,
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:              resource.MustParse(cpuLimit),
-									corev1.ResourceMemory:           resource.MustParse(memoryLimit),
-									corev1.ResourceEphemeralStorage: resource.MustParse(ephemeralStorageLimit),
-								},
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse(cpuRequest),
-									corev1.ResourceMemory: resource.MustParse(memoryRequest),
-								},
-							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt32(gatewayPort),
+										Name:      "data",
+										MountPath: "/home/node/.openclaw",
+										SubPath:   botID,
 									},
 								},
-								InitialDelaySeconds: 180,
-								PeriodSeconds:       30,
-								FailureThreshold:    5,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt32(gatewayPort),
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:              resource.MustParse(cpuLimit),
+										corev1.ResourceMemory:           resource.MustParse(memoryLimit),
+										corev1.ResourceEphemeralStorage: resource.MustParse(ephemeralStorageLimit),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse(cpuRequest),
+										corev1.ResourceMemory: resource.MustParse(memoryRequest),
 									},
 								},
-								InitialDelaySeconds: 60,
-								PeriodSeconds:       10,
-								FailureThreshold:    15,
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "data",
-							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: pvcName,
+								LivenessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										TCPSocket: &corev1.TCPSocketAction{
+											Port: intstr.FromInt32(gatewayPort),
+										},
+									},
+									InitialDelaySeconds: 180,
+									PeriodSeconds:       30,
+									FailureThreshold:    5,
+								},
+								ReadinessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										TCPSocket: &corev1.TCPSocketAction{
+											Port: intstr.FromInt32(gatewayPort),
+										},
+									},
+									InitialDelaySeconds: 60,
+									PeriodSeconds:       10,
+									FailureThreshold:    15,
 								},
 							},
-						},
-					},
+						}
+
+						// Add ChatClaw sidecar when enabled
+						if ChatClawEnabled() {
+							ccImage := viper.GetString("chatclaw.image")
+							ccPort := chatclawPort()
+							containers = append(containers, corev1.Container{
+								Name:            "chatclaw",
+								Image:           ccImage,
+								ImagePullPolicy: imagePullPolicy(ccImage),
+								SecurityContext: &corev1.SecurityContext{
+									RunAsUser:                func() *int64 { v := int64(1000); return &v }(),
+									RunAsGroup:               func() *int64 { v := int64(1000); return &v }(),
+									AllowPrivilegeEscalation: func() *bool { v := false; return &v }(),
+								},
+								Ports: []corev1.ContainerPort{
+									{
+										Name:          "chatclaw",
+										ContainerPort: ccPort,
+										Protocol:      corev1.ProtocolTCP,
+									},
+								},
+								Env: []corev1.EnvVar{
+									{Name: "PORT", Value: fmt.Sprintf("%d", ccPort)},
+									{Name: "HOSTNAME", Value: "0.0.0.0"},
+									{Name: "NODE_ENV", Value: "production"},
+									{Name: "NEXT_TELEMETRY_DISABLED", Value: "1"},
+									{Name: "CHATCLAW_DATA_DIR", Value: "/data"},
+									// Set HOME so ~/.openclaw resolves to the shared volume
+									{Name: "HOME", Value: "/home/node"},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "data",
+										MountPath: "/home/node/.openclaw",
+										SubPath:   botID,
+									},
+									{
+										Name:      "data",
+										MountPath: "/data",
+										SubPath:   botID + "/chatclaw-data",
+									},
+								},
+								Resources: corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("500m"),
+										corev1.ResourceMemory: resource.MustParse("512Mi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("100m"),
+										corev1.ResourceMemory: resource.MustParse("256Mi"),
+									},
+								},
+								ReadinessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										TCPSocket: &corev1.TCPSocketAction{
+											Port: intstr.FromInt32(ccPort),
+										},
+									},
+									InitialDelaySeconds: 10,
+									PeriodSeconds:       10,
+									FailureThreshold:    10,
+								},
+								LivenessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										TCPSocket: &corev1.TCPSocketAction{
+											Port: intstr.FromInt32(ccPort),
+										},
+									},
+									InitialDelaySeconds: 30,
+									PeriodSeconds:       30,
+									FailureThreshold:    3,
+								},
+							})
+						}
+
+						return containers
+					}(),
+					Volumes: func() []corev1.Volume {
+						vols := []corev1.Volume{
+							{
+								Name: "data",
+								VolumeSource: corev1.VolumeSource{
+									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: pvcName,
+									},
+								},
+							},
+						}
+						return vols
+					}(),
 				},
 			},
 		},
 	}
+}
+
+func CreateDeployment(ctx context.Context, botID, userID, accessToken string, config *BotConfig) error {
+	client := GetClient()
+	namespace := GetNamespace()
+
+	deployment := buildDeploymentSpec(botID, userID, config)
 
 	_, err := client.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
@@ -305,6 +403,29 @@ exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJS
 			return nil
 		}
 		return fmt.Errorf("failed to create deployment: %w", err)
+	}
+
+	return nil
+}
+
+// ReplaceDeployment updates the full deployment spec and triggers a rolling update.
+// Unlike RestartDeployment (annotation-only), this picks up all spec changes
+// including new sidecar containers, image updates, resource changes, etc.
+func ReplaceDeployment(ctx context.Context, botID, userID, accessToken string, config *BotConfig) error {
+	client := GetClient()
+	namespace := GetNamespace()
+
+	deployment := buildDeploymentSpec(botID, userID, config)
+
+	// Add restart annotation to ensure rollout even if spec is identical
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = make(map[string]string)
+	}
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = metav1.Now().Format("2006-01-02T15:04:05Z07:00")
+
+	_, err := client.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update deployment: %w", err)
 	}
 
 	return nil

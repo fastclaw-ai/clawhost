@@ -109,10 +109,10 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 	}
 
 	gateway := map[string]interface{}{
-		"port":           gatewayPort,
-		"mode":           "local",
-		"bind":           "lan",
-		"auth":           authConfig,
+		"port": gatewayPort,
+		"mode": "local",
+		"bind": "lan",
+		"auth": authConfig,
 		"tailscale": map[string]interface{}{
 			"mode":        "off",
 			"resetOnExit": false,
@@ -121,6 +121,16 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 		"controlUi": map[string]interface{}{
 			"dangerouslyDisableDeviceAuth": true,
 		},
+	}
+	// Enable HTTP chat completions endpoint when ChatClaw is active
+	if ChatClawEnabled() {
+		gateway["http"] = map[string]interface{}{
+			"endpoints": map[string]interface{}{
+				"chatCompletions": map[string]interface{}{
+					"enabled": true,
+				},
+			},
+		}
 	}
 	existing["gateway"] = gateway
 
@@ -343,6 +353,18 @@ func buildOpenClawConfig(config *BotConfig, setDefaultModel bool) string {
 		controlUiParts += fmt.Sprintf(",\n      \"allowedOrigins\": %s", allowedOrigins)
 	}
 	optionalParts += fmt.Sprintf(",\n    \"controlUi\": {\n      %s\n    }", controlUiParts)
+
+	// Enable HTTP chat completions endpoint when ChatClaw is active
+	if ChatClawEnabled() {
+		optionalParts += `,
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }`
+	}
 
 	// Build auth section using token auth with AccessToken
 	authSection := fmt.Sprintf(`"auth": {

@@ -11,6 +11,20 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// ChatClawEnabled returns true if a ChatClaw image is configured.
+func ChatClawEnabled() bool {
+	return viper.GetString("chatclaw.image") != ""
+}
+
+// chatclawPort returns the configured ChatClaw port (default 3000).
+func chatclawPort() int32 {
+	p := viper.GetInt32("chatclaw.port")
+	if p == 0 {
+		return 3000
+	}
+	return p
+}
+
 func CreateService(ctx context.Context, botID, userID string) (string, error) {
 	client := GetClient()
 	namespace := GetNamespace()
@@ -27,6 +41,26 @@ func CreateService(ctx context.Context, botID, userID string) (string, error) {
 		"user-id": userID,
 	}
 
+	ports := []corev1.ServicePort{
+		{
+			Name:       "gateway",
+			Port:       gatewayPort,
+			TargetPort: intstr.FromInt(int(gatewayPort)),
+			Protocol:   corev1.ProtocolTCP,
+		},
+	}
+
+	// Add ChatClaw port when enabled
+	if ChatClawEnabled() {
+		ccPort := chatclawPort()
+		ports = append(ports, corev1.ServicePort{
+			Name:       "chatclaw",
+			Port:       ccPort,
+			TargetPort: intstr.FromInt(int(ccPort)),
+			Protocol:   corev1.ProtocolTCP,
+		})
+	}
+
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName,
@@ -35,15 +69,8 @@ func CreateService(ctx context.Context, botID, userID string) (string, error) {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: labels,
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "gateway",
-					Port:       gatewayPort,
-					TargetPort: intstr.FromInt(int(gatewayPort)),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-			Type: corev1.ServiceTypeClusterIP,
+			Ports:    ports,
+			Type:     corev1.ServiceTypeClusterIP,
 		},
 	}
 
@@ -105,4 +132,33 @@ func GetServiceEndpoint(ctx context.Context, botID string) (string, error) {
 	}
 
 	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, gatewayPort), nil
+}
+
+// GetWebUIEndpoint returns the endpoint for WebUI traffic.
+// When ChatClaw is enabled, returns the ChatClaw port; otherwise returns the gateway port.
+func GetWebUIEndpoint(ctx context.Context, botID string) (string, error) {
+	if !ChatClawEnabled() {
+		return GetServiceEndpoint(ctx, botID)
+	}
+
+	client := GetClient()
+	namespace := GetNamespace()
+	serviceName := GetServiceName(botID)
+
+	ccPort := chatclawPort()
+
+	service, err := client.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get service: %w", err)
+	}
+
+	localDev := viper.GetBool("kubernetes.local_dev")
+	if localDev && service.Spec.ClusterIP != "" && service.Spec.ClusterIP != "None" {
+		return fmt.Sprintf("%s:%d", service.Spec.ClusterIP, ccPort), nil
+	}
+
+	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, ccPort), nil
 }

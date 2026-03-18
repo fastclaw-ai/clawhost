@@ -37,3 +37,8 @@ data:
     memory_limit = "4Gi"
     cpu_request = "500m"
     memory_request = "1Gi"
+
+    # ChatClaw WebUI (optional, uncomment to enable)
+    # [chatclaw]
+    # image = "chatclaw:latest"
+    # port = 3000

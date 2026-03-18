@@ -3,6 +3,9 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +24,45 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
+
+const sessionCookieName = "_claw_session"
+
+// sessionCookieValue generates an HMAC-SHA256 signature for the session cookie.
+// Using HMAC rather than storing the raw token prevents cookie leaks from exposing the access token.
+func sessionCookieValue(botID, accessToken string) string {
+	mac := hmac.New(sha256.New, []byte(accessToken))
+	mac.Write([]byte(botID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// validateSession checks if the request carries a valid ?token= or session cookie.
+// Returns the access token on success, or an empty string on failure.
+func validateSession(c echo.Context, bot *model.Bot) (accessToken string, ok bool) {
+	// 1. Check ?token= query parameter
+	if token := c.QueryParam("token"); token != "" && token == bot.AccessToken {
+		return bot.AccessToken, true
+	}
+
+	// 2. Check session cookie
+	cookie, err := c.Cookie(sessionCookieName)
+	if err == nil && cookie.Value == sessionCookieValue(bot.ID, bot.AccessToken) {
+		return bot.AccessToken, true
+	}
+
+	return "", false
+}
+
+// setSessionCookie sets an HttpOnly session cookie so subsequent requests don't need ?token=.
+func setSessionCookie(c echo.Context, bot *model.Bot) {
+	c.SetCookie(&http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionCookieValue(bot.ID, bot.AccessToken),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   86400 * 7, // 7 days
+	})
+}
 
 // isUUID checks if a string is in UUID format
 func isUUID(s string) bool {
@@ -112,13 +154,27 @@ func ProxyToBot(c echo.Context) error {
 		return util.InternalError(c, "failed to get bot")
 	}
 
-	// Auto-approval: only when request carries a valid access token.
-	// Start a poller to approve devices that become pending in the next ~16s
-	// (from WebUI JS requests that follow the initial page load).
+	// When ChatClaw is enabled, require valid token or session cookie for all requests.
+	// When using OpenClaw's built-in WebUI, security is handled by device pairing.
+	chatclawMode := k8s.ChatClawEnabled()
+
 	accessToken := ""
-	if token := c.QueryParam("token"); token != "" && token == bot.AccessToken {
-		accessToken = bot.AccessToken
-		go autoApprovePoller(bot.ID, accessToken)
+	if chatclawMode {
+		token, ok := validateSession(c, bot)
+		if !ok {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"error": "access token required, use ?token=<access_token>",
+			})
+		}
+		accessToken = token
+		// Set session cookie so subsequent requests (JS/CSS/API) don't need ?token=
+		setSessionCookie(c, bot)
+	} else {
+		// Legacy OpenClaw WebUI: auto-approval via polling
+		if token := c.QueryParam("token"); token != "" && token == bot.AccessToken {
+			accessToken = bot.AccessToken
+			go autoApprovePoller(bot.ID, accessToken)
+		}
 	}
 
 	if bot.Status != model.BotStatusRunning {
@@ -126,7 +182,8 @@ func ProxyToBot(c echo.Context) error {
 	}
 
 	// Get target URL from K8s service (uses ClusterIP in local dev mode, DNS in production)
-	targetHost, err := k8s.GetServiceEndpoint(context.Background(), bot.ID)
+	// When ChatClaw is enabled, routes to ChatClaw port; otherwise to OpenClaw gateway
+	targetHost, err := k8s.GetWebUIEndpoint(context.Background(), bot.ID)
 	if err != nil {
 		return util.InternalError(c, "failed to get service endpoint")
 	}

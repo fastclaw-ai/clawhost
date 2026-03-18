@@ -22,15 +22,36 @@ func RestartBot(c echo.Context) error {
 
 	ctx := context.Background()
 
-	// Restart deployment (triggers rolling update)
-	if err := k8s.RestartDeployment(ctx, bot.ID); err != nil {
-		return util.InternalError(c, "failed to restart deployment: "+err.Error())
+	// Build current config
+	openclawConfig, _ := bot.GetOpenClawConfig()
+	k8sConfig := convertToK8sConfig(bot, openclawConfig)
+
+	// Replace deployment spec with rolling update — picks up all changes
+	// (ChatClaw sidecar, image updates, resource changes) without downtime
+	if err := k8s.ReplaceDeployment(ctx, bot.ID, bot.UserID, bot.AccessToken, k8sConfig); err != nil {
+		return util.InternalError(c, "failed to update deployment: "+err.Error())
+	}
+
+	// Recreate service to pick up port changes (e.g., ChatClaw port added/removed)
+	// DeleteService + CreateService is safe — existing connections drain naturally
+	// during the rolling update window
+	k8s.DeleteService(ctx, bot.ID)
+	endpoint, err := k8s.CreateService(ctx, bot.ID, bot.UserID)
+	if err != nil {
+		return util.InternalError(c, "failed to create service: "+err.Error())
+	}
+
+	// Update endpoint
+	if err := model.UpdateBotStatus(bot.ID, model.BotStatusRunning, endpoint); err != nil {
+		c.Logger().Errorf("failed to update bot endpoint: %v", err)
 	}
 
 	// Sync config to pod after restart
 	go func() {
-		if err := k8s.SyncConfigToPod(context.Background(), bot.ID); err != nil {
-			c.Logger().Errorf("failed to sync config to bot: %v", err)
+		if k8sConfig.AccessToken != "" {
+			if err := k8s.WriteConfigToBot(context.Background(), bot.ID, k8sConfig, false); err != nil {
+				c.Logger().Errorf("failed to write config to bot: %v", err)
+			}
 		}
 	}()
 

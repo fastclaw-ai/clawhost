@@ -79,6 +79,13 @@ openclaw:
   cpuRequest: "500m"
   memoryRequest: "1Gi"
 
+## ChatClaw WebUI (optional sidecar)
+## When image is set, ChatClaw is deployed alongside OpenClaw in each bot pod.
+## When image is empty (default), OpenClaw's built-in WebUI is used.
+chatclaw:
+  image: ""
+  port: 3000
+
 ## Ingress
 ingress:
   enabled: false
