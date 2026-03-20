@@ -74,8 +74,9 @@ openclaw:
   image: "1panel/openclaw:latest"
   imagePullSecret: ""
   gatewayPort: 18789
+  nodeMaxOldSpaceSize: 6144
   cpuLimit: "2000m"
-  memoryLimit: "4Gi"
+  memoryLimit: "8Gi"
   cpuRequest: "500m"
   memoryRequest: "1Gi"
 
@@ -85,6 +86,14 @@ openclaw:
 chatclaw:
   image: ""
   port: 3000
+  cpuLimit: "1000m"
+  memoryLimit: "1Gi"
+  cpuRequest: "100m"
+  memoryRequest: "256Mi"
+  dbBackend: "drizzle"
+  dataDir: "/data"
+  authEnabled: "false"
+  multiCompany: "false"
 
 ## Ingress
 ingress:

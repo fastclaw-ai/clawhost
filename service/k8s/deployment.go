@@ -300,6 +300,24 @@ exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJS
 						if ChatClawEnabled() {
 							ccImage := viper.GetString("chatclaw.image")
 							ccPort := chatclawPort()
+
+							ccCPULimit := viper.GetString("chatclaw.cpu_limit")
+							if ccCPULimit == "" {
+								ccCPULimit = "1000m"
+							}
+							ccMemoryLimit := viper.GetString("chatclaw.memory_limit")
+							if ccMemoryLimit == "" {
+								ccMemoryLimit = "1Gi"
+							}
+							ccCPURequest := viper.GetString("chatclaw.cpu_request")
+							if ccCPURequest == "" {
+								ccCPURequest = "100m"
+							}
+							ccMemoryRequest := viper.GetString("chatclaw.memory_request")
+							if ccMemoryRequest == "" {
+								ccMemoryRequest = "256Mi"
+							}
+
 							containers = append(containers, corev1.Container{
 								Name:            "chatclaw",
 								Image:           ccImage,
@@ -316,15 +334,36 @@ exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJS
 										Protocol:      corev1.ProtocolTCP,
 									},
 								},
-								Env: []corev1.EnvVar{
-									{Name: "PORT", Value: fmt.Sprintf("%d", ccPort)},
-									{Name: "HOSTNAME", Value: "0.0.0.0"},
-									{Name: "NODE_ENV", Value: "production"},
-									{Name: "NEXT_TELEMETRY_DISABLED", Value: "1"},
-									{Name: "CHATCLAW_DATA_DIR", Value: "/data"},
-									// Set HOME so ~/.openclaw resolves to the shared volume
-									{Name: "HOME", Value: "/home/node"},
-								},
+								Env: func() []corev1.EnvVar {
+									dbBackend := viper.GetString("chatclaw.db_backend")
+									if dbBackend == "" {
+										dbBackend = "drizzle"
+									}
+									dataDir := viper.GetString("chatclaw.data_dir")
+									if dataDir == "" {
+										dataDir = "/data"
+									}
+									authEnabled := viper.GetString("chatclaw.auth_enabled")
+									if authEnabled == "" {
+										authEnabled = "false"
+									}
+									multiCompany := viper.GetString("chatclaw.multi_company")
+									if multiCompany == "" {
+										multiCompany = "false"
+									}
+									return []corev1.EnvVar{
+										{Name: "PORT", Value: fmt.Sprintf("%d", ccPort)},
+										{Name: "HOSTNAME", Value: "0.0.0.0"},
+										{Name: "NODE_ENV", Value: "production"},
+										{Name: "NEXT_TELEMETRY_DISABLED", Value: "1"},
+										{Name: "DB_BACKEND", Value: dbBackend},
+										{Name: "CHATCLAW_DATA_DIR", Value: dataDir},
+										{Name: "AUTH_ENABLED", Value: authEnabled},
+										{Name: "MULTI_COMPANY", Value: multiCompany},
+										// Set HOME so ~/.openclaw resolves to the shared volume
+										{Name: "HOME", Value: "/home/node"},
+									}
+								}(),
 								VolumeMounts: []corev1.VolumeMount{
 									{
 										Name:      "data",
@@ -339,12 +378,12 @@ exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJS
 								},
 								Resources: corev1.ResourceRequirements{
 									Limits: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("500m"),
-										corev1.ResourceMemory: resource.MustParse("512Mi"),
+										corev1.ResourceCPU:    resource.MustParse(ccCPULimit),
+										corev1.ResourceMemory: resource.MustParse(ccMemoryLimit),
 									},
 									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("100m"),
-										corev1.ResourceMemory: resource.MustParse("256Mi"),
+										corev1.ResourceCPU:    resource.MustParse(ccCPURequest),
+										corev1.ResourceMemory: resource.MustParse(ccMemoryRequest),
 									},
 								},
 								ReadinessProbe: &corev1.Probe{

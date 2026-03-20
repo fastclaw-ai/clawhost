@@ -36,6 +36,7 @@ data:
     image_pull_secret = {{ .Values.openclaw.imagePullSecret | quote }}
     {{- end }}
     gateway_port = {{ .Values.openclaw.gatewayPort }}
+    node_max_old_space_size = {{ .Values.openclaw.nodeMaxOldSpaceSize }}
     cpu_limit = {{ .Values.openclaw.cpuLimit | quote }}
     memory_limit = {{ .Values.openclaw.memoryLimit | quote }}
     cpu_request = {{ .Values.openclaw.cpuRequest | quote }}
@@ -45,4 +46,12 @@ data:
     [chatclaw]
     image = {{ .Values.chatclaw.image | quote }}
     port = {{ .Values.chatclaw.port }}
+    cpu_limit = {{ .Values.chatclaw.cpuLimit | quote }}
+    memory_limit = {{ .Values.chatclaw.memoryLimit | quote }}
+    cpu_request = {{ .Values.chatclaw.cpuRequest | quote }}
+    memory_request = {{ .Values.chatclaw.memoryRequest | quote }}
+    db_backend = {{ .Values.chatclaw.dbBackend | quote }}
+    data_dir = {{ .Values.chatclaw.dataDir | quote }}
+    auth_enabled = {{ .Values.chatclaw.authEnabled | quote }}
+    multi_company = {{ .Values.chatclaw.multiCompany | quote }}
     {{- end }}

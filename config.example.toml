@@ -29,8 +29,9 @@ bot_domain_template = "https://{bot_id}.clawhost.ai"
 [openclaw]
 image = "1panel/openclaw:latest"
 gateway_port = 18789
+node_max_old_space_size = 6144
 cpu_limit = "2000m"
-memory_limit = "4Gi"
+memory_limit = "8Gi"
 cpu_request = "500m"
 memory_request = "1Gi"
 
@@ -40,3 +41,11 @@ memory_request = "1Gi"
 # [chatclaw]
 # image = "chatclaw:latest"
 # port = 3000
+# cpu_limit = "1000m"
+# memory_limit = "1Gi"
+# cpu_request = "100m"
+# memory_request = "256Mi"
+# db_backend = "drizzle"
+# data_dir = "/data"
+# auth_enabled = "false"
+# multi_company = "false"
