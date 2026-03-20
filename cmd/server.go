@@ -154,6 +154,9 @@ func startServer() {
 		// Bot upgrade management
 		admin.POST("/bots/upgrade", v1.UpgradeAllBots)
 		admin.POST("/bots/:id/upgrade", v1.UpgradeBot)
+
+		// Bot restart management (full pod spec rebuild)
+		admin.POST("/bots/restart", v1.RestartAllBots)
 	}
 
 	// Health check
