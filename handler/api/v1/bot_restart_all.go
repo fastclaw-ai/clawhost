@@ -18,16 +18,9 @@ type RestartResult struct {
 	Message string `json:"message,omitempty"`
 }
 
-type RestartAllResponse struct {
-	Total     int             `json:"total"`
-	Restarted int64           `json:"restarted"`
-	Failed    int64           `json:"failed"`
-	Skipped   int64           `json:"skipped"`
-	Results   []RestartResult `json:"results"`
-}
-
 // RestartAllBots restarts all running bots with full pod spec rebuild.
-// This picks up all config changes: images, sidecar, resources, env vars, etc.
+// Executes asynchronously — returns immediately with the total count,
+// bots are restarted in the background.
 // POST /bot/api/v1/admin/bots/restart
 func RestartAllBots(c echo.Context) error {
 	bots, err := model.ListBotsByStatus(model.BotStatusRunning)
@@ -36,32 +29,40 @@ func RestartAllBots(c echo.Context) error {
 	}
 
 	if len(bots) == 0 {
-		return util.Success(c, &RestartAllResponse{Total: 0})
+		return util.Success(c, map[string]interface{}{
+			"total":   0,
+			"message": "no running bots to restart",
+		})
 	}
 
+	// Launch restart in background
+	go restartBotsAsync(bots)
+
+	return util.Success(c, map[string]interface{}{
+		"total":   len(bots),
+		"message": "restart initiated in background",
+	})
+}
+
+func restartBotsAsync(bots []*model.Bot) {
 	ctx := context.Background()
 	var restarted, failed, skipped atomic.Int64
-	results := make([]RestartResult, len(bots))
 
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5) // max 5 concurrent restarts
+	sem := make(chan struct{}, 1) // sequential restarts to avoid node memory pressure
 
-	for i, bot := range bots {
+	for _, bot := range bots {
 		wg.Add(1)
-		go func(idx int, b *model.Bot) {
+		go func(b *model.Bot) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			result := RestartResult{BotID: b.ID}
 
 			// Check deployment exists
 			exists, err := k8s.DeploymentExists(ctx, b.ID)
 			if err != nil || !exists {
 				skipped.Add(1)
-				result.Status = "skipped"
-				result.Message = "deployment not found"
-				results[idx] = result
+				fmt.Printf("[RestartAll] Skipped bot %s: deployment not found\n", b.ID)
 				return
 			}
 
@@ -71,9 +72,7 @@ func RestartAllBots(c echo.Context) error {
 
 			if err := k8s.ReplaceDeployment(ctx, b.ID, b.UserID, b.AccessToken, k8sConfig); err != nil {
 				failed.Add(1)
-				result.Status = "failed"
-				result.Message = err.Error()
-				results[idx] = result
+				fmt.Printf("[RestartAll] Failed bot %s: %v\n", b.ID, err)
 				return
 			}
 
@@ -82,27 +81,18 @@ func RestartAllBots(c echo.Context) error {
 			endpoint, err := k8s.CreateService(ctx, b.ID, b.UserID)
 			if err != nil {
 				failed.Add(1)
-				result.Status = "failed"
-				result.Message = fmt.Sprintf("service recreate failed: %v", err)
-				results[idx] = result
+				fmt.Printf("[RestartAll] Service failed for bot %s: %v\n", b.ID, err)
 				return
 			}
 
 			_ = model.UpdateBotStatus(b.ID, model.BotStatusRunning, endpoint)
 
 			restarted.Add(1)
-			result.Status = "restarted"
-			results[idx] = result
-		}(i, bot)
+			fmt.Printf("[RestartAll] Restarted bot %s\n", b.ID)
+		}(bot)
 	}
 
 	wg.Wait()
-
-	return util.Success(c, &RestartAllResponse{
-		Total:     len(bots),
-		Restarted: restarted.Load(),
-		Failed:    failed.Load(),
-		Skipped:   skipped.Load(),
-		Results:   results,
-	})
+	fmt.Printf("[RestartAll] Done: %d restarted, %d failed, %d skipped (total %d)\n",
+		restarted.Load(), failed.Load(), skipped.Load(), len(bots))
 }

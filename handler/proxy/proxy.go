@@ -154,20 +154,39 @@ func ProxyToBot(c echo.Context) error {
 		return util.InternalError(c, "failed to get bot")
 	}
 
-	// When ChatClaw is enabled, require valid token or session cookie for all requests.
-	// When using OpenClaw's built-in WebUI, security is handled by device pairing.
-	chatclawMode := k8s.ChatClawEnabled()
+	if bot.Status != model.BotStatusRunning {
+		return util.BadRequest(c, "bot is not running")
+	}
 
+	// Get target URL from K8s service
+	// Routes to ChatClaw port if the service has it, otherwise to OpenClaw gateway
+	targetHost, err := k8s.GetWebUIEndpoint(context.Background(), bot.ID)
+	if err != nil {
+		return util.InternalError(c, "failed to get service endpoint")
+	}
+	if targetHost == "" {
+		return util.NotFound(c, "bot service not found")
+	}
+
+	// Determine auth mode based on which port we're routing to.
+	// ChatClaw pods: require token/cookie auth (no device pairing).
+	// OpenClaw-only pods: use legacy device pairing auto-approval.
+	chatclawMode := strings.HasSuffix(targetHost, fmt.Sprintf(":%d", k8s.ChatClawPort()))
 	accessToken := ""
 	if chatclawMode {
 		token, ok := validateSession(c, bot)
 		if !ok {
+			// Distinguish between invalid token and no credentials at all
+			if t := c.QueryParam("token"); t != "" {
+				return c.JSON(http.StatusUnauthorized, map[string]string{
+					"error": "invalid access token",
+				})
+			}
 			return c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "access token required, use ?token=<access_token>",
 			})
 		}
 		accessToken = token
-		// Set session cookie so subsequent requests (JS/CSS/API) don't need ?token=
 		setSessionCookie(c, bot)
 	} else {
 		// Legacy OpenClaw WebUI: auto-approval via polling
@@ -175,20 +194,6 @@ func ProxyToBot(c echo.Context) error {
 			accessToken = bot.AccessToken
 			go autoApprovePoller(bot.ID, accessToken)
 		}
-	}
-
-	if bot.Status != model.BotStatusRunning {
-		return util.BadRequest(c, "bot is not running")
-	}
-
-	// Get target URL from K8s service (uses ClusterIP in local dev mode, DNS in production)
-	// When ChatClaw is enabled, routes to ChatClaw port; otherwise to OpenClaw gateway
-	targetHost, err := k8s.GetWebUIEndpoint(context.Background(), bot.ID)
-	if err != nil {
-		return util.InternalError(c, "failed to get service endpoint")
-	}
-	if targetHost == "" {
-		return util.NotFound(c, "bot service not found")
 	}
 
 	// Get the remaining path after /proxy/{bot_id}

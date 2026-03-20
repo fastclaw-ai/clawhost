@@ -304,7 +304,7 @@ exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJS
 						// Add ChatClaw sidecar when enabled
 						if ChatClawEnabled() {
 							ccImage := viper.GetString("chatclaw.image")
-							ccPort := chatclawPort()
+							ccPort := ChatClawPort()
 
 							ccCPULimit := viper.GetString("chatclaw.cpu_limit")
 							if ccCPULimit == "" {

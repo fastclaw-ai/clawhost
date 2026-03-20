@@ -16,8 +16,8 @@ func ChatClawEnabled() bool {
 	return viper.GetString("chatclaw.image") != ""
 }
 
-// chatclawPort returns the configured ChatClaw port (default 3000).
-func chatclawPort() int32 {
+// ChatClawPort returns the configured ChatClaw port (default 3000).
+func ChatClawPort() int32 {
 	p := viper.GetInt32("chatclaw.port")
 	if p == 0 {
 		return 3000
@@ -52,7 +52,7 @@ func CreateService(ctx context.Context, botID, userID string) (string, error) {
 
 	// Add ChatClaw port when enabled
 	if ChatClawEnabled() {
-		ccPort := chatclawPort()
+		ccPort := ChatClawPort()
 		ports = append(ports, corev1.ServicePort{
 			Name:       "chatclaw",
 			Port:       ccPort,
@@ -135,7 +135,9 @@ func GetServiceEndpoint(ctx context.Context, botID string) (string, error) {
 }
 
 // GetWebUIEndpoint returns the endpoint for WebUI traffic.
-// When ChatClaw is enabled, returns the ChatClaw port; otherwise returns the gateway port.
+// Checks if the service actually has a chatclaw port — if so, routes to ChatClaw;
+// otherwise falls back to the gateway port. This handles the case where ChatClaw
+// is globally enabled but older pods haven't been restarted yet.
 func GetWebUIEndpoint(ctx context.Context, botID string) (string, error) {
 	if !ChatClawEnabled() {
 		return GetServiceEndpoint(ctx, botID)
@@ -145,14 +147,27 @@ func GetWebUIEndpoint(ctx context.Context, botID string) (string, error) {
 	namespace := GetNamespace()
 	serviceName := GetServiceName(botID)
 
-	ccPort := chatclawPort()
-
 	service, err := client.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to get service: %w", err)
+	}
+
+	// Check if service actually has the chatclaw port (old services won't have it)
+	ccPort := ChatClawPort()
+	hasChatClaw := false
+	for _, p := range service.Spec.Ports {
+		if p.Name == "chatclaw" || p.Port == ccPort {
+			hasChatClaw = true
+			break
+		}
+	}
+
+	// Fall back to gateway port for old pods without chatclaw
+	if !hasChatClaw {
+		return GetServiceEndpoint(ctx, botID)
 	}
 
 	localDev := viper.GetBool("kubernetes.local_dev")
