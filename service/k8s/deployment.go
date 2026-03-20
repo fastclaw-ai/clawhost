@@ -219,9 +219,14 @@ func buildDeploymentSpec(botID, userID string, config *BotConfig) *appsv1.Deploy
 								Command: func() []string {
 									if config != nil && config.AccessToken != "" {
 										configJSON := buildOpenClawConfig(config, true)
-										return []string{"sh", "-c", fmt.Sprintf(`cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'
+										// Only write config if it doesn't exist yet (first start).
+										// On restart, the PVC already has the live config (possibly modified
+										// by user via OpenClaw UI), so we must not overwrite it.
+										return []string{"sh", "-c", fmt.Sprintf(`if [ ! -f /home/node/.openclaw/openclaw.json ]; then
+cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'
 %s
 EOFCONFIG
+fi
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
 									return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}
