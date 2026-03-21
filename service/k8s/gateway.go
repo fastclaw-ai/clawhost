@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -14,16 +14,16 @@ import (
 
 // GatewayRequest represents a JSON-RPC style request to the Gateway
 type GatewayRequest struct {
-	Type   string      `json:"type"`
-	ID     int64       `json:"id"`
-	Method string      `json:"method"`
-	Params interface{} `json:"params,omitempty"`
+	Type   string `json:"type"`
+	ID     string `json:"id"`
+	Method string `json:"method"`
+	Params any    `json:"params,omitempty"`
 }
 
 // GatewayResponse represents a JSON-RPC style response from the Gateway
 type GatewayResponse struct {
 	Type    string          `json:"type"`
-	ID      int64           `json:"id"`
+	ID      string          `json:"id"`
 	OK      bool            `json:"ok"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 	Error   *GatewayError   `json:"error,omitempty"`
@@ -87,14 +87,19 @@ type GatewayClient struct {
 
 // NewGatewayClient creates a new Gateway client and connects to the specified endpoint
 func NewGatewayClient(ctx context.Context, endpoint, accessToken string) (*GatewayClient, error) {
-	// Set up dialer with TLS support for self-signed certs
+	// Set up dialer with TLS support for self-signed certs.
+	// Explicitly disable HTTP proxy to prevent proxy software (e.g. Clash)
+	// from corrupting WebSocket frames when connecting to internal services.
+	noProxy := func(*http.Request) (*url.URL, error) { return nil, nil }
 	tlsDialer := websocket.Dialer{
+		Proxy:            noProxy,
 		HandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
 	}
 	plainDialer := websocket.Dialer{
+		Proxy:            noProxy,
 		HandshakeTimeout: 10 * time.Second,
 	}
 
@@ -128,8 +133,7 @@ func NewGatewayClient(ctx context.Context, endpoint, accessToken string) (*Gatew
 	}
 
 	client := &GatewayClient{
-		conn:      conn,
-		requestID: 0,
+		conn: conn,
 	}
 
 	// Handle authentication handshake
@@ -174,27 +178,27 @@ func (c *GatewayClient) handleAuth(ctx context.Context, accessToken string) erro
 		return nil
 	}
 
-	// Send connect request matching OpenClaw's current gateway protocol (v3).
-	// Required fields: minProtocol, maxProtocol, client, role, scopes, auth.
-	authReq := map[string]interface{}{
+	// Send connect request matching OpenClaw's current gateway protocol.
+	// Use "cli" client identity — the gateway preserves scopes for CLI clients
+	// with valid shared auth (token) when dangerouslyDisableDeviceAuth is enabled.
+	authReq := map[string]any{
 		"type":   "req",
-		"id":     1,
+		"id":     "connect-1",
 		"method": "connect",
-		"params": map[string]interface{}{
+		"params": map[string]any{
 			"minProtocol": 3,
 			"maxProtocol": 3,
-			"client": map[string]interface{}{
-				"id":       "clawhost",
+			"client": map[string]any{
+				"id":       "cli",
 				"version":  "1.0.0",
 				"platform": "linux",
-				"mode":     "operator",
+				"mode":     "cli",
 			},
 			"role":   "operator",
-			"scopes": []string{"operator.read", "operator.write"},
-			"auth": map[string]interface{}{
+			"scopes": []string{"operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"},
+			"auth": map[string]any{
 				"token": accessToken,
 			},
-			"nonce": event.Payload.Nonce,
 		},
 	}
 
@@ -218,7 +222,7 @@ func (c *GatewayClient) handleAuth(ctx context.Context, accessToken string) erro
 	// Parse response
 	var resp struct {
 		Type  string `json:"type"`
-		ID    int64  `json:"id"`
+		ID    string `json:"id"`
 		OK    bool   `json:"ok"`
 		Error *struct {
 			Code    string `json:"code"`
@@ -250,7 +254,8 @@ func (c *GatewayClient) Close() error {
 
 // Call sends a request to the Gateway and waits for a response
 func (c *GatewayClient) Call(ctx context.Context, method string, params interface{}) (json.RawMessage, error) {
-	id := atomic.AddInt64(&c.requestID, 1)
+	c.requestID++
+	id := fmt.Sprintf("%d", c.requestID)
 
 	req := GatewayRequest{
 		Type:   "req",

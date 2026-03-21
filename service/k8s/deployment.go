@@ -227,6 +227,32 @@ cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'
 %s
 EOFCONFIG
 fi
+# Patch config: clean up invalid keys and ensure controlUi is set
+if command -v node > /dev/null 2>&1 && [ -f /home/node/.openclaw/openclaw.json ]; then
+  node -e "
+    const fs = require('fs');
+    const f = '/home/node/.openclaw/openclaw.json';
+    try {
+      const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+      let changed = false;
+      if (c.gateway && c.gateway.auth && c.gateway.auth.scopes) {
+        delete c.gateway.auth.scopes;
+        changed = true;
+      }
+      if (c.gateway) {
+        if (!c.gateway.controlUi || !c.gateway.controlUi.allowedOrigins) {
+          c.gateway.controlUi = { allowedOrigins: ['*'], dangerouslyDisableDeviceAuth: true };
+          changed = true;
+        }
+        if (!c.gateway.http || !c.gateway.http.endpoints || !c.gateway.http.endpoints.chatCompletions) {
+          c.gateway.http = { endpoints: { chatCompletions: { enabled: true } } };
+          changed = true;
+        }
+      }
+      if (changed) fs.writeFileSync(f, JSON.stringify(c, null, 2));
+    } catch(e) {}
+  " 2>/dev/null
+fi
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
 									return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}

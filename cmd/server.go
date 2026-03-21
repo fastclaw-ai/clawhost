@@ -137,6 +137,10 @@ func startServer() {
 		// Agent defaults management
 		botAPI.GET("/config/defaults", v1.GetAgentDefaults)
 		botAPI.PUT("/config/defaults", v1.SetAgentDefaults)
+
+		// Raw openclaw.json config (read/write from running pod)
+		botAPI.GET("/config/raw", v1.GetBotRawConfig)
+		botAPI.PUT("/config/raw", v1.UpdateBotRawConfig)
 	}
 
 	// Admin API routes: /bot/api/v1/admin/* (requires admin token)

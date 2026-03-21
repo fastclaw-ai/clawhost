@@ -67,6 +67,37 @@ func WriteConfigToBot(ctx context.Context, botID string, config *BotConfig, forc
 	return nil
 }
 
+// ReadBotConfig reads the openclaw.json config from a running bot's pod
+func ReadBotConfig(ctx context.Context, botID string) (map[string]interface{}, error) {
+	namespace := GetNamespace()
+	podName, err := waitForPodReady(ctx, botID, 10)
+	if err != nil {
+		return nil, fmt.Errorf("pod not ready: %w", err)
+	}
+	return readExistingConfig(ctx, namespace, podName)
+}
+
+// WriteBotConfig writes a full openclaw.json config to a running bot's pod
+func WriteBotConfig(ctx context.Context, botID string, config map[string]interface{}) error {
+	namespace := GetNamespace()
+	podName, err := waitForPodReady(ctx, botID, 10)
+	if err != nil {
+		return fmt.Errorf("pod not ready: %w", err)
+	}
+
+	configJSON, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	command := []string{"sh", "-c", fmt.Sprintf("cat > /home/node/.openclaw/openclaw.json << 'EOFCONFIG'\n%s\nEOFCONFIG", string(configJSON))}
+	_, err = ExecInPod(ctx, namespace, podName, "openclaw", command)
+	if err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	return nil
+}
+
 // readExistingConfig reads the existing openclaw.json config from the pod
 func readExistingConfig(ctx context.Context, namespace, podName string) (map[string]interface{}, error) {
 	output, err := ExecInPod(ctx, namespace, podName, "openclaw",
@@ -107,6 +138,8 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 			"token": config.AccessToken,
 		}
 	}
+	// Clean up invalid keys that OpenClaw doesn't recognize
+	delete(authConfig, "scopes")
 
 	gateway := map[string]interface{}{
 		"port": gatewayPort,
@@ -120,17 +153,17 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 		"trustedProxies": trustedProxies,
 		"controlUi": map[string]interface{}{
 			"dangerouslyDisableDeviceAuth": true,
+			"allowedOrigins":              []string{"*"},
 		},
 	}
-	// Enable HTTP chat completions endpoint when ChatClaw is active
-	if ChatClawEnabled() {
-		gateway["http"] = map[string]interface{}{
-			"endpoints": map[string]interface{}{
-				"chatCompletions": map[string]interface{}{
-					"enabled": true,
-				},
+	// Always enable HTTP chat completions endpoint so external clients
+	// (e.g., local ChatClaw) can connect to the gateway via HTTP API
+	gateway["http"] = map[string]interface{}{
+		"endpoints": map[string]interface{}{
+			"chatCompletions": map[string]interface{}{
+				"enabled": true,
 			},
-		}
+		},
 	}
 	existing["gateway"] = gateway
 
@@ -308,22 +341,6 @@ func getTrustedProxies() string {
 	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
-// getAllowedOrigins returns the allowed origins list from config
-// Returns empty string if not configured (OpenClaw may not support this in all versions)
-func getAllowedOrigins() string {
-	origins := viper.GetStringSlice("openclaw.allowed_origins")
-	if len(origins) == 0 {
-		// Don't set allowedOrigins by default - some OpenClaw versions don't support it
-		// The proxy already rewrites Origin header to bypass origin checks
-		return ""
-	}
-	// Format as JSON array
-	quoted := make([]string, len(origins))
-	for i, o := range origins {
-		quoted[i] = fmt.Sprintf(`"%s"`, o)
-	}
-	return "[" + strings.Join(quoted, ", ") + "]"
-}
 
 // getGatewayPort returns the gateway port from config
 func getGatewayPort() int {
@@ -340,23 +357,19 @@ func buildOpenClawConfig(config *BotConfig, setDefaultModel bool) string {
 	// Build gateway section with password or token auth
 	gatewayPort := getGatewayPort()
 	trustedProxies := getTrustedProxies()
-	allowedOrigins := getAllowedOrigins()
 
 	// Build optional gateway parts
 	var optionalParts string
 	if trustedProxies != "" {
 		optionalParts += fmt.Sprintf(",\n    \"trustedProxies\": %s", trustedProxies)
 	}
-	// Build controlUi section with dangerouslyDisableDeviceAuth and optional allowedOrigins
-	controlUiParts := `"dangerouslyDisableDeviceAuth": true`
-	if allowedOrigins != "" {
-		controlUiParts += fmt.Sprintf(",\n      \"allowedOrigins\": %s", allowedOrigins)
-	}
+	// Build controlUi section — always allow all origins since proxy handles auth
+	controlUiParts := `"dangerouslyDisableDeviceAuth": true,
+      "allowedOrigins": ["*"]`
 	optionalParts += fmt.Sprintf(",\n    \"controlUi\": {\n      %s\n    }", controlUiParts)
 
-	// Enable HTTP chat completions endpoint when ChatClaw is active
-	if ChatClawEnabled() {
-		optionalParts += `,
+	// Always enable HTTP chat completions endpoint
+	optionalParts += `,
     "http": {
       "endpoints": {
         "chatCompletions": {
@@ -364,7 +377,6 @@ func buildOpenClawConfig(config *BotConfig, setDefaultModel bool) string {
         }
       }
     }`
-	}
 
 	// Build auth section using token auth with AccessToken
 	authSection := fmt.Sprintf(`"auth": {
@@ -572,7 +584,6 @@ func getAPIOrDefault(api, provider string) string {
 // This is used to write config before gateway starts (in container command)
 func BuildGatewayConfig(config *BotConfig, port int32) string {
 	trustedProxies := getTrustedProxies()
-	allowedOrigins := getAllowedOrigins()
 
 	// Build optional parts
 	var optionalParts string
@@ -580,12 +591,9 @@ func BuildGatewayConfig(config *BotConfig, port int32) string {
 		optionalParts += fmt.Sprintf(`,
     "trustedProxies": %s`, trustedProxies)
 	}
-	// Build controlUi section with dangerouslyDisableDeviceAuth and optional allowedOrigins
-	controlUiParts := `"dangerouslyDisableDeviceAuth": true`
-	if allowedOrigins != "" {
-		controlUiParts += fmt.Sprintf(`,
-      "allowedOrigins": %s`, allowedOrigins)
-	}
+	// Always allow all origins — proxy handles auth
+	controlUiParts := `"dangerouslyDisableDeviceAuth": true,
+      "allowedOrigins": ["*"]`
 	optionalParts += fmt.Sprintf(`,
     "controlUi": {
       %s

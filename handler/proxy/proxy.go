@@ -43,7 +43,14 @@ func validateSession(c echo.Context, bot *model.Bot) (accessToken string, ok boo
 		return bot.AccessToken, true
 	}
 
-	// 2. Check session cookie
+	// 2. Check Authorization header (Bearer <token>)
+	if auth := c.Request().Header.Get("Authorization"); auth != "" {
+		if token := strings.TrimPrefix(auth, "Bearer "); token != auth && token == bot.AccessToken {
+			return bot.AccessToken, true
+		}
+	}
+
+	// 3. Check session cookie
 	cookie, err := c.Cookie(sessionCookieName)
 	if err == nil && cookie.Value == sessionCookieValue(bot.ID, bot.AccessToken) {
 		return bot.AccessToken, true
@@ -158,9 +165,27 @@ func ProxyToBot(c echo.Context) error {
 		return util.BadRequest(c, "bot is not running")
 	}
 
-	// Get target URL from K8s service
-	// Routes to ChatClaw port if the service has it, otherwise to OpenClaw gateway
-	targetHost, err := k8s.GetWebUIEndpoint(context.Background(), bot.ID)
+	// Get the remaining path early so we can decide which backend to route to
+	remainingPath := c.Param("*")
+	if remainingPath == "" {
+		remainingPath = "/"
+	} else if !strings.HasPrefix(remainingPath, "/") {
+		remainingPath = "/" + remainingPath
+	}
+
+	// Determine target: API paths (/v1/*) and WebSocket always go to OpenClaw gateway;
+	// everything else goes to ChatClaw WebUI (if enabled).
+	isAPIPath := strings.HasPrefix(remainingPath, "/v1/")
+	isWS := isWebSocketRequest(c.Request())
+
+	var targetHost string
+	if isAPIPath || isWS {
+		// API and WebSocket requests must reach the OpenClaw gateway directly
+		targetHost, err = k8s.GetServiceEndpoint(context.Background(), bot.ID)
+	} else {
+		// WebUI requests go to ChatClaw if available, otherwise gateway
+		targetHost, err = k8s.GetWebUIEndpoint(context.Background(), bot.ID)
+	}
 	if err != nil {
 		return util.InternalError(c, "failed to get service endpoint")
 	}
@@ -196,16 +221,8 @@ func ProxyToBot(c echo.Context) error {
 		}
 	}
 
-	// Get the remaining path after /proxy/{bot_id}
-	remainingPath := c.Param("*")
-	if remainingPath == "" {
-		remainingPath = "/"
-	} else if !strings.HasPrefix(remainingPath, "/") {
-		remainingPath = "/" + remainingPath
-	}
-
 	// Check if this is a WebSocket upgrade request
-	if isWebSocketRequest(c.Request()) {
+	if isWS {
 		return proxyWebSocket(c, targetHost, remainingPath, bot.ID, accessToken)
 	}
 
@@ -223,6 +240,12 @@ func ProxyToBot(c echo.Context) error {
 		req.Host = targetHost
 		req.URL.Path = remainingPath
 		req.URL.RawQuery = c.QueryString()
+
+		// For API paths routed to gateway, ensure the gateway auth token is set.
+		// The bot's AccessToken is the same token configured in openclaw.json gateway.auth.token.
+		if isAPIPath && bot.AccessToken != "" {
+			req.Header.Set("Authorization", "Bearer "+bot.AccessToken)
+		}
 
 		// Forward real client IP
 		clientIP := c.RealIP()
