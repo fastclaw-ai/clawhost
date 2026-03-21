@@ -141,29 +141,37 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 	// Clean up invalid keys that OpenClaw doesn't recognize
 	delete(authConfig, "scopes")
 
-	gateway := map[string]interface{}{
-		"port": gatewayPort,
-		"mode": "local",
-		"bind": "lan",
-		"auth": authConfig,
-		"tailscale": map[string]interface{}{
+	// Merge into existing gateway config to preserve key ordering and avoid
+	// unnecessary config change detection (which triggers gateway self-restart).
+	gateway, _ := existing["gateway"].(map[string]interface{})
+	if gateway == nil {
+		gateway = make(map[string]interface{})
+	}
+	gateway["port"] = gatewayPort
+	gateway["mode"] = "local"
+	gateway["bind"] = "lan"
+	gateway["auth"] = authConfig
+	if gateway["tailscale"] == nil {
+		gateway["tailscale"] = map[string]interface{}{
 			"mode":        "off",
 			"resetOnExit": false,
-		},
-		"trustedProxies": trustedProxies,
-		"controlUi": map[string]interface{}{
+		}
+	}
+	gateway["trustedProxies"] = trustedProxies
+	if gateway["controlUi"] == nil {
+		gateway["controlUi"] = map[string]interface{}{
 			"dangerouslyDisableDeviceAuth": true,
 			"allowedOrigins":              []string{"*"},
-		},
+		}
 	}
-	// Always enable HTTP chat completions endpoint so external clients
-	// (e.g., local ChatClaw) can connect to the gateway via HTTP API
-	gateway["http"] = map[string]interface{}{
-		"endpoints": map[string]interface{}{
-			"chatCompletions": map[string]interface{}{
-				"enabled": true,
+	if gateway["http"] == nil {
+		gateway["http"] = map[string]interface{}{
+			"endpoints": map[string]interface{}{
+				"chatCompletions": map[string]interface{}{
+					"enabled": true,
+				},
 			},
-		},
+		}
 	}
 	existing["gateway"] = gateway
 
