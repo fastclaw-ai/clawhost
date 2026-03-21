@@ -87,6 +87,13 @@ func restartBotsAsync(bots []*model.Bot) {
 
 			_ = model.UpdateBotStatus(b.ID, model.BotStatusRunning, endpoint)
 
+			// Sync config to pod after restart (ensures controlUi, http, etc.)
+			if k8sConfig.AccessToken != "" {
+				if err := k8s.WriteConfigToBot(ctx, b.ID, k8sConfig, false); err != nil {
+					fmt.Printf("[RestartAll] Config sync failed for bot %s: %v\n", b.ID, err)
+				}
+			}
+
 			restarted.Add(1)
 			fmt.Printf("[RestartAll] Restarted bot %s\n", b.ID)
 		}(bot)

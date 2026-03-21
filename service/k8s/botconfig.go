@@ -158,20 +158,16 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 		}
 	}
 	gateway["trustedProxies"] = trustedProxies
-	if gateway["controlUi"] == nil {
-		gateway["controlUi"] = map[string]interface{}{
-			"dangerouslyDisableDeviceAuth": true,
-			"allowedOrigins":              []string{"*"},
-		}
+	gateway["controlUi"] = map[string]interface{}{
+		"dangerouslyDisableDeviceAuth": true,
+		"allowedOrigins":              []string{"*"},
 	}
-	if gateway["http"] == nil {
-		gateway["http"] = map[string]interface{}{
-			"endpoints": map[string]interface{}{
-				"chatCompletions": map[string]interface{}{
-					"enabled": true,
-				},
+	gateway["http"] = map[string]interface{}{
+		"endpoints": map[string]interface{}{
+			"chatCompletions": map[string]interface{}{
+				"enabled": true,
 			},
-		}
+		},
 	}
 	existing["gateway"] = gateway
 
