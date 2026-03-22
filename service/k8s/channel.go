@@ -114,6 +114,7 @@ func AddChannelToBot(ctx context.Context, botID, accessToken, channel, account s
 type ChannelAccountInfo struct {
 	Channel  string                 `json:"channel"`
 	Account  string                 `json:"account"`
+	Name     string                 `json:"name,omitempty"`
 	Status   string                 `json:"status"`
 	Config   map[string]interface{} `json:"config,omitempty"`
 }
@@ -165,7 +166,35 @@ func ListBotChannels(ctx context.Context, botID, accessToken string) ([]ChannelA
 		}
 	}
 
+	// For openclaw-weixin accounts, enrich with name from credential files
+	enrichWeixinAccountNames(ctx, namespace, podName, result)
+
 	return result, nil
+}
+
+// enrichWeixinAccountNames reads name from WeChat credential files and sets the Name field
+func enrichWeixinAccountNames(ctx context.Context, namespace, podName string, accounts []ChannelAccountInfo) {
+	for i := range accounts {
+		if accounts[i].Channel != "openclaw-weixin" {
+			continue
+		}
+		// Read credential file for this account
+		credPath := fmt.Sprintf("/home/node/.openclaw/openclaw-weixin/accounts/%s.json", accounts[i].Account)
+		output, err := ExecInPod(ctx, namespace, podName, "openclaw",
+			[]string{"cat", credPath})
+		if err != nil {
+			accounts[i].Name = accounts[i].Account
+			continue
+		}
+		var cred struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal([]byte(output), &cred) == nil && cred.Name != "" {
+			accounts[i].Name = cred.Name
+		} else {
+			accounts[i].Name = accounts[i].Account
+		}
+	}
 }
 
 // RemoveChannelFromBot removes an IM channel account from a bot

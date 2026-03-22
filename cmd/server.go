@@ -122,6 +122,12 @@ func startServer() {
 		botAPI.POST("/channels/:channel/pairing/revoke", v1.RevokeChannelPairing)
 		botAPI.GET("/channels/:channel/pairing/users", v1.GetChannelPairedUsers)
 
+		// WeChat channel management (QR code login + multi-account)
+		botAPI.POST("/channels/wechat/login", v1.WechatLoginStart)
+		botAPI.GET("/channels/wechat/login/status", v1.WechatLoginStatus)
+		botAPI.GET("/channels/wechat/accounts", v1.WechatListAccounts)
+		botAPI.DELETE("/channels/wechat/accounts/:account_id", v1.WechatRemoveAccount)
+
 		// Device pairing management
 		botAPI.GET("/devices", v1.ListDevices)
 		botAPI.POST("/devices/:request_id/approve", v1.ApproveDevice)

@@ -253,6 +253,8 @@ if command -v node > /dev/null 2>&1 && [ -f /home/node/.openclaw/openclaw.json ]
     } catch(e) {}
   " 2>/dev/null
 fi
+# Pre-install channel plugins (skip if already installed)
+openclaw plugins install "@tencent-weixin/openclaw-weixin" 2>/dev/null || true
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
 									return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}
