@@ -22,13 +22,14 @@ if [ -f "$PVC_MJS" ]; then\n\
 fi\n\
 exec node /app/openclaw.mjs "$@"\n' > /usr/local/bin/openclaw && chmod +x /usr/local/bin/openclaw
 
+# Prepare staging dir for pre-installed plugins (needs root for /opt)
+RUN mkdir -p /opt/openclaw-plugins && chown node:node /opt/openclaw-plugins
+
 USER node
 
-# Pre-install WeChat channel plugin into a staging dir.
-# At runtime ~/.openclaw is PVC-mounted, so we install to the default path first
-# then move to /opt/openclaw-plugins/ which won't be shadowed by the PVC mount.
+# Pre-install WeChat channel plugin, then move to /opt/ so it won't be
+# shadowed by the PVC mount on ~/.openclaw at runtime.
 RUN node /app/openclaw.mjs plugins install "@tencent-weixin/openclaw-weixin" && \
-    mkdir -p /opt/openclaw-plugins && \
     mv /home/node/.openclaw/extensions/openclaw-weixin /opt/openclaw-plugins/ && \
     rm -rf /home/node/.openclaw
 
