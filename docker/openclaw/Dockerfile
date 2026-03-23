@@ -24,6 +24,11 @@ exec node /app/openclaw.mjs "$@"\n' > /usr/local/bin/openclaw && chmod +x /usr/l
 
 USER node
 
+# Pre-install WeChat channel plugin into a staging dir (the real ~/.openclaw is
+# PVC-mounted at runtime, so we copy from here on first start)
+RUN CLAWHUB_WORKDIR=/home/node/.openclaw-preinstalled \
+    node /app/openclaw.mjs plugins install "@tencent-weixin/openclaw-weixin"
+
 # PVC-backed working directory for skills, plugins, and user-installed packages
 ENV CLAWHUB_WORKDIR="/home/node/.openclaw"
 ENV NPM_CONFIG_PREFIX="/home/node/.openclaw/npm"

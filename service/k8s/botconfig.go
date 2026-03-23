@@ -204,6 +204,23 @@ func mergeConfigForModels(existing map[string]interface{}, config *BotConfig, se
 		}
 	}
 
+	// Ensure plugins section has openclaw-weixin registered
+	plugins, _ := existing["plugins"].(map[string]interface{})
+	if plugins == nil {
+		plugins = make(map[string]interface{})
+	}
+	entries, _ := plugins["entries"].(map[string]interface{})
+	if entries == nil {
+		entries = make(map[string]interface{})
+	}
+	if _, ok := entries["openclaw-weixin"]; !ok {
+		entries["openclaw-weixin"] = map[string]interface{}{
+			"enabled": true,
+		}
+	}
+	plugins["entries"] = entries
+	existing["plugins"] = plugins
+
 	// Merge channels from config if provided
 	// This allows setting channels during bot creation or update
 	if len(config.Channels) > 0 {
@@ -447,6 +464,13 @@ func buildOpenClawConfig(config *BotConfig, setDefaultModel bool) string {
   "models": {
     "mode": "merge",
     "providers": %s
+  },
+  "plugins": {
+    "entries": {
+      "openclaw-weixin": {
+        "enabled": true
+      }
+    }
   }%s
 }`, gatewaySection, agentsSection, providersJSON, channelsSection)
 	}
@@ -457,6 +481,13 @@ func buildOpenClawConfig(config *BotConfig, setDefaultModel bool) string {
   "models": {
     "mode": "merge",
     "providers": %s
+  },
+  "plugins": {
+    "entries": {
+      "openclaw-weixin": {
+        "enabled": true
+      }
+    }
   }%s
 }`, gatewaySection, providersJSON, channelsSection)
 }
