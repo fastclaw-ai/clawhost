@@ -254,9 +254,9 @@ if command -v node > /dev/null 2>&1 && [ -f /home/node/.openclaw/openclaw.json ]
   " 2>/dev/null
 fi
 # Copy pre-installed plugin from image if not already on PVC
-if [ ! -d /home/node/.openclaw/extensions/openclaw-weixin ] && [ -d /home/node/.openclaw-preinstalled/extensions/openclaw-weixin ]; then
+if [ ! -d /home/node/.openclaw/extensions/openclaw-weixin ] && [ -d /opt/openclaw-plugins/openclaw-weixin ]; then
   mkdir -p /home/node/.openclaw/extensions
-  cp -r /home/node/.openclaw-preinstalled/extensions/openclaw-weixin /home/node/.openclaw/extensions/
+  cp -r /opt/openclaw-plugins/openclaw-weixin /home/node/.openclaw/extensions/
 fi
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
