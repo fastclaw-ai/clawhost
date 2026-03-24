@@ -2,14 +2,17 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
+	"net/http"
 	"strings"
 
 	v1 "github.com/clawhost/clawhost/handler/api/v1"
 	"github.com/clawhost/clawhost/handler/proxy"
 	authmw "github.com/clawhost/clawhost/middleware"
 	"github.com/clawhost/clawhost/service/k8s"
+	"github.com/clawhost/clawhost/web"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/cobra"
@@ -153,6 +156,22 @@ func startServer() {
 	admin := e.Group("/bot/api/v1/admin")
 	admin.Use(authmw.AdminAuth())
 	{
+		// Token verification
+		admin.GET("/verify", func(c echo.Context) error {
+			return c.JSON(200, map[string]interface{}{"code": 0, "message": "success"})
+		})
+
+		// Global config (for admin UI)
+		admin.GET("/config", func(c echo.Context) error {
+			return c.JSON(200, map[string]interface{}{
+				"code":    0,
+				"message": "success",
+				"data": map[string]interface{}{
+					"bot_domain_template": viper.GetString("domain.bot_domain_template"),
+				},
+			})
+		})
+
 		// App management
 		admin.POST("/apps", v1.CreateApp)
 		admin.GET("/apps", v1.ListApps)
@@ -160,6 +179,13 @@ func startServer() {
 		admin.PUT("/apps/:id", v1.UpdateApp)
 		admin.DELETE("/apps/:id", v1.DeleteApp)
 		admin.POST("/apps/:id/reset-token", v1.ResetAppToken)
+
+		// Bot management (admin)
+		admin.POST("/bots", v1.AdminCreateBot)
+		admin.GET("/bots", v1.AdminListBots)
+		admin.POST("/bots/:id/start", v1.AdminStartBot)
+		admin.POST("/bots/:id/stop", v1.AdminStopBot)
+		admin.DELETE("/bots/:id", v1.AdminDeleteBot)
 
 		// Bot upgrade management
 		admin.POST("/bots/upgrade", v1.UpgradeAllBots)
@@ -174,6 +200,18 @@ func startServer() {
 		return c.JSON(200, map[string]string{"status": "ok"})
 	})
 
+	// Admin UI (served from embedded Next.js static export)
+	adminFS, err := fs.Sub(web.AdminFS, "admin/out")
+	if err != nil {
+		log.Printf("Warning: admin UI not available: %v", err)
+	} else {
+		adminHandler := http.FileServer(http.FS(adminFS))
+		e.GET("/admin/*", echo.WrapHandler(http.StripPrefix("/admin", adminHandler)))
+		e.GET("/admin", func(c echo.Context) error {
+			return c.Redirect(301, "/admin/")
+		})
+	}
+
 	// Bot proxy routes (for {bot_id}.clawhost.ai/*)
 	e.Any("/proxy/:bot_id", proxy.ProxyToBot)
 	e.Any("/proxy/:bot_id/*", proxy.ProxyToBot)
@@ -184,5 +222,6 @@ func startServer() {
 	}
 
 	log.Printf("Starting server on port %d", port)
+	log.Printf("Admin UI: http://localhost:%d/admin", port)
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
 }

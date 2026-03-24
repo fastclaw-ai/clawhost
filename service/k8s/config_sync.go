@@ -14,7 +14,7 @@ import (
 func ReadOpenClawConfig(ctx context.Context, botID string) (*model.OpenClawConfig, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -68,7 +68,7 @@ func SyncConfigToDatabase(ctx context.Context, botID string) error {
 func WriteOpenClawConfigToPod(ctx context.Context, botID string, config *model.OpenClawConfig) error {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 60)
+	podName, err := WaitForPodReady(ctx, botID, 60)
 	if err != nil {
 		return fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -95,7 +95,7 @@ func WriteOpenClawConfigToPod(ctx context.Context, botID string, config *model.O
 func SyncSectionsToPod(ctx context.Context, botID string, sections ...string) error {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 60)
+	podName, err := WaitForPodReady(ctx, botID, 60)
 	if err != nil {
 		return fmt.Errorf("failed to get pod: %w", err)
 	}

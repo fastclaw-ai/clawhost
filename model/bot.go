@@ -15,10 +15,11 @@ import (
 type BotStatus string
 
 const (
-	BotStatusCreated BotStatus = "created"
-	BotStatusRunning BotStatus = "running"
-	BotStatusStopped BotStatus = "stopped"
-	BotStatusError   BotStatus = "error"
+	BotStatusCreated  BotStatus = "created"
+	BotStatusStarting BotStatus = "starting"
+	BotStatusRunning  BotStatus = "running"
+	BotStatusStopped  BotStatus = "stopped"
+	BotStatusError    BotStatus = "error"
 )
 
 type Bot struct {
@@ -303,6 +304,14 @@ func ListBotsByAppAndUser(appID, userID string) ([]*Bot, error) {
 		query = query.Where("user_id = ?", userID)
 	}
 	if err := query.Order("created_at DESC").Find(&bots).Error; err != nil {
+		return nil, err
+	}
+	return bots, nil
+}
+
+func ListAllBots() ([]*Bot, error) {
+	var bots []*Bot
+	if err := util.GetDB().Order("created_at DESC").Find(&bots).Error; err != nil {
 		return nil, err
 	}
 	return bots, nil

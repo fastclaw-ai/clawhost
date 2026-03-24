@@ -25,7 +25,7 @@ type ChannelConfig struct {
 func AddChannelToBot(ctx context.Context, botID, accessToken, channel, account string, channelConfig map[string]interface{}) error {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -123,7 +123,7 @@ type ChannelAccountInfo struct {
 func ListBotChannels(ctx context.Context, botID, accessToken string) ([]ChannelAccountInfo, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -202,7 +202,7 @@ func enrichWeixinAccountNames(ctx context.Context, namespace, podName string, ac
 func RemoveChannelFromBot(ctx context.Context, botID, accessToken, channel, account string) error {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -305,7 +305,7 @@ func writeOpenClawConfig(ctx context.Context, namespace, podName string, config 
 func ApproveChannelPairing(ctx context.Context, botID, channel, code string) (string, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return "", fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -348,7 +348,7 @@ type ChannelPairedUser struct {
 func ListChannelPairingRequests(ctx context.Context, botID, channel string) (*ChannelPairingResponse, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -375,7 +375,7 @@ func ListChannelPairingRequests(ctx context.Context, botID, channel string) (*Ch
 func RevokeChannelPairing(ctx context.Context, botID, channel, userID string) (string, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return "", fmt.Errorf("failed to get pod: %w", err)
 	}
@@ -431,7 +431,7 @@ func RevokeChannelPairing(ctx context.Context, botID, channel, userID string) (s
 func GetChannelPairedUsers(ctx context.Context, botID, channel string) ([]ChannelPairedUser, error) {
 	namespace := GetNamespace()
 
-	podName, err := waitForPodReady(ctx, botID, 30)
+	podName, err := WaitForPodReady(ctx, botID, 30)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}

@@ -63,7 +63,7 @@ func ListAgents(ctx context.Context, botID string) ([]map[string]interface{}, er
 // ReadWorkspaceFile reads a file from an agent's workspace
 func ReadWorkspaceFile(ctx context.Context, botID, agentID, filename string) (string, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return "", fmt.Errorf("pod not ready: %w", err)
 	}
@@ -80,7 +80,7 @@ func ReadWorkspaceFile(ctx context.Context, botID, agentID, filename string) (st
 // WriteWorkspaceFile writes a file to an agent's workspace
 func WriteWorkspaceFile(ctx context.Context, botID, agentID, filename, content string) error {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return fmt.Errorf("pod not ready: %w", err)
 	}
@@ -97,7 +97,7 @@ func WriteWorkspaceFile(ctx context.Context, botID, agentID, filename, content s
 // ListWorkspaceFiles lists all .md files in an agent's workspace
 func ListWorkspaceFiles(ctx context.Context, botID, agentID string) ([]string, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return nil, fmt.Errorf("pod not ready: %w", err)
 	}
@@ -121,7 +121,7 @@ func ListWorkspaceFiles(ctx context.Context, botID, agentID string) ([]string, e
 // ListSkills lists skill files for an agent
 func ListSkills(ctx context.Context, botID, agentID string) ([]map[string]string, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return nil, fmt.Errorf("pod not ready: %w", err)
 	}
@@ -147,7 +147,7 @@ func ListSkills(ctx context.Context, botID, agentID string) ([]map[string]string
 // ReadSkill reads a skill file content
 func ReadSkill(ctx context.Context, botID, agentID, skillName string) (string, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return "", fmt.Errorf("pod not ready: %w", err)
 	}
@@ -164,7 +164,7 @@ func ReadSkill(ctx context.Context, botID, agentID, skillName string) (string, e
 // WriteSkill writes a skill file
 func WriteSkill(ctx context.Context, botID, agentID, skillName, content string) error {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return fmt.Errorf("pod not ready: %w", err)
 	}
@@ -179,7 +179,7 @@ func WriteSkill(ctx context.Context, botID, agentID, skillName, content string) 
 // DeleteSkill deletes a skill file
 func DeleteSkill(ctx context.Context, botID, agentID, skillName string) error {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return fmt.Errorf("pod not ready: %w", err)
 	}
@@ -193,7 +193,7 @@ func DeleteSkill(ctx context.Context, botID, agentID, skillName string) error {
 // ReadAgentConfig reads the agent-specific config (models.json etc.)
 func ReadAgentConfig(ctx context.Context, botID, agentID string) (map[string]interface{}, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return nil, fmt.Errorf("pod not ready: %w", err)
 	}

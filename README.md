@@ -36,9 +36,21 @@ Kubernetes-native platform for managing and orchestrating [OpenClaw](https://ope
 
 Each bot runs as an isolated K8s Pod with its own Deployment + Service. ClawHost manages the full lifecycle and proxies all traffic via subdomain routing, no per-bot Ingress needed. Bot config is synced bidirectionally between PostgreSQL and the pod.
 
+## Admin UI
+
+Built-in web admin panel at `/admin` for managing Apps and Bots. Built with Next.js + shadcn/ui, statically exported and embedded into the Go binary.
+
+![Admin UI Preview](preview.png)
+
+- **Apps** - Create, edit, delete apps; copy/reset API tokens
+- **Bots** - List all bots across apps; start, stop, upgrade, delete; view bot domains
+- **Auth** - Token-based login verified against the configured `api.admin_token`
+- **Responsive** - Table view on desktop, card layout on mobile
+
 ## Prerequisites
 
 - Go 1.24+ (for building from source)
+- Node.js 20+ and npm (for building the admin UI)
 - Kubernetes cluster (1.28+) - locally via [OrbStack](https://orbstack.dev/) or Docker Desktop
 - `kubectl` and optionally `helm` (v3)
 
@@ -98,7 +110,14 @@ Run ClawHost on your host, connecting to a K8s cluster via kubeconfig.
 ```bash
 git clone https://github.com/clawhost/clawhost.git
 cd clawhost
-go build -o clawhost .
+
+# Build admin UI + Go binary
+make build
+
+# Or step by step:
+# cd web/admin && npm install && npm run build && cd ../..
+# go build -o clawhost .
+
 cp config.example.toml config.toml
 ```
 

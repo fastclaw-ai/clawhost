@@ -61,7 +61,7 @@ kubeconfig
 dist/
 build/
 bin/
-out/
+/out/
 
 # Temporary files
 tmp/

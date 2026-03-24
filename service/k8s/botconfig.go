@@ -20,7 +20,7 @@ func WriteConfigToBot(ctx context.Context, botID string, config *BotConfig, forc
 	namespace := GetNamespace()
 
 	// Wait for pod to be ready and get pod name
-	podName, err := waitForPodReady(ctx, botID, 60) // 60 seconds timeout
+	podName, err := WaitForPodReady(ctx, botID, 60) // 60 seconds timeout
 	if err != nil {
 		return fmt.Errorf("failed to wait for pod ready: %w", err)
 	}
@@ -70,7 +70,7 @@ func WriteConfigToBot(ctx context.Context, botID string, config *BotConfig, forc
 // ReadBotConfig reads the openclaw.json config from a running bot's pod
 func ReadBotConfig(ctx context.Context, botID string) (map[string]interface{}, error) {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return nil, fmt.Errorf("pod not ready: %w", err)
 	}
@@ -80,7 +80,7 @@ func ReadBotConfig(ctx context.Context, botID string) (map[string]interface{}, e
 // WriteBotConfig writes a full openclaw.json config to a running bot's pod
 func WriteBotConfig(ctx context.Context, botID string, config map[string]interface{}) error {
 	namespace := GetNamespace()
-	podName, err := waitForPodReady(ctx, botID, 10)
+	podName, err := WaitForPodReady(ctx, botID, 10)
 	if err != nil {
 		return fmt.Errorf("pod not ready: %w", err)
 	}
