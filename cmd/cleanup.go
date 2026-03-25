@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/clawhost/clawhost/model"
@@ -54,22 +55,34 @@ func cleanupExpiredBots(grace time.Duration, limit int) {
 	}
 
 	log.Printf("[cleanup] found %d expired bot(s)", len(bots))
-	ctx := context.Background()
+
+	// Process concurrently with limited parallelism
+	concurrency := 10
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
 
 	for _, bot := range bots {
-		log.Printf("[cleanup] removing bot %s (%s), status=%s, expired at %s",
-			bot.ID, bot.Name, bot.Status, bot.ExpiresAt.Format(time.RFC3339))
+		wg.Add(1)
+		sem <- struct{}{} // acquire
+		go func(bot *model.Bot) {
+			defer wg.Done()
+			defer func() { <-sem }() // release
 
-		// Clean up K8s resources (idempotent, safe if not exists)
-		k8s.DeleteDeployment(ctx, bot.ID)
-		k8s.DeleteService(ctx, bot.ID)
+			log.Printf("[cleanup] removing bot %s (%s), status=%s, expired at %s",
+				bot.ID, bot.Name, bot.Status, bot.ExpiresAt.Format(time.RFC3339))
 
-		// Mark as deleted
-		if err := model.UpdateBotStatus(bot.ID, model.BotStatusDeleted, ""); err != nil {
-			log.Printf("[cleanup] failed to mark bot %s as deleted: %v", bot.ID, err)
-			continue
-		}
+			ctx := context.Background()
+			k8s.DeleteDeployment(ctx, bot.ID)
+			k8s.DeleteService(ctx, bot.ID)
 
-		log.Printf("[cleanup] bot %s marked as deleted", bot.ID)
+			if err := model.UpdateBotStatus(bot.ID, model.BotStatusDeleted, ""); err != nil {
+				log.Printf("[cleanup] failed to mark bot %s as deleted: %v", bot.ID, err)
+				return
+			}
+
+			log.Printf("[cleanup] bot %s done", bot.ID)
+		}(bot)
 	}
+
+	wg.Wait()
 }
