@@ -240,8 +240,9 @@ if command -v node > /dev/null 2>&1 && [ -f /home/node/.openclaw/openclaw.json ]
         changed = true;
       }
       if (c.gateway) {
-        if (!c.gateway.controlUi || !c.gateway.controlUi.allowedOrigins) {
-          c.gateway.controlUi = { allowedOrigins: ['*'], dangerouslyDisableDeviceAuth: true };
+        const wantUi = { allowedOrigins: ['*'], dangerouslyDisableDeviceAuth: true };
+        if (!c.gateway.controlUi || JSON.stringify(c.gateway.controlUi) !== JSON.stringify(wantUi)) {
+          c.gateway.controlUi = wantUi;
           changed = true;
         }
         if (!c.gateway.http || !c.gateway.http.endpoints || !c.gateway.http.endpoints.chatCompletions) {
@@ -475,7 +476,9 @@ func CreateDeployment(ctx context.Context, botID, userID, accessToken string, co
 	_, err := client.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			return nil
+			// Deployment exists (maybe scaled to 0 from a previous stop).
+			// Update the full spec and ensure replicas=1.
+			return ReplaceDeployment(ctx, botID, userID, accessToken, config)
 		}
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}

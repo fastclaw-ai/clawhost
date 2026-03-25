@@ -289,7 +289,7 @@ func UpdateBotSlug(id, slug string) error {
 
 func ListBotsByUserID(userID string) ([]*Bot, error) {
 	var bots []*Bot
-	if err := util.GetDB().Where("user_id = ?", userID).Order("created_at DESC").Find(&bots).Error; err != nil {
+	if err := util.GetDB().Where("user_id = ? AND status != ?", userID, BotStatusDeleted).Order("created_at DESC").Find(&bots).Error; err != nil {
 		return nil, err
 	}
 	return bots, nil
@@ -297,7 +297,7 @@ func ListBotsByUserID(userID string) ([]*Bot, error) {
 
 func ListBotsByAppAndUser(appID, userID string) ([]*Bot, error) {
 	var bots []*Bot
-	query := util.GetDB()
+	query := util.GetDB().Where("status != ?", BotStatusDeleted)
 	if appID != "" {
 		query = query.Where("app_id = ?", appID)
 	}
@@ -312,7 +312,7 @@ func ListBotsByAppAndUser(appID, userID string) ([]*Bot, error) {
 
 func ListAllBots() ([]*Bot, error) {
 	var bots []*Bot
-	if err := util.GetDB().Order("created_at DESC").Find(&bots).Error; err != nil {
+	if err := util.GetDB().Where("status != ?", BotStatusDeleted).Order("created_at DESC").Find(&bots).Error; err != nil {
 		return nil, err
 	}
 	return bots, nil
