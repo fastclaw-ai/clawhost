@@ -41,7 +41,7 @@ func InitDB() error {
 
 		var err error
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Info),
+			Logger: logger.Default.LogMode(logger.Warn),
 		})
 		if err != nil {
 			initErr = fmt.Errorf("open db failed: %w", err)

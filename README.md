@@ -12,6 +12,7 @@ Kubernetes-native platform for managing and orchestrating [OpenClaw](https://ope
 - **Device Pairing** - Approve and manage device access with auto-approval
 - **Model Providers** - Configure multiple AI providers (Anthropic, OpenAI, MiniMax, etc.)
 - **Proxy** - HTTP and WebSocket proxy to bot instances, with subdomain routing
+- **Bot Cleanup** - K8s CronJob to automatically stop and clean up expired bots
 
 ## Architecture
 
@@ -300,6 +301,40 @@ All manifests are in `deploy/k8s/`:
 | `secrets.yaml.example` | Secret template (copy and edit)   |
 | `configmap.yaml`       | ClawHost config.toml              |
 | `deployment.yaml`      | ClawHost Deployment + Service     |
+| `cronjob-cleanup.yaml` | CronJob for expired bot cleanup   |
+
+### Bot Cleanup
+
+Expired bots are cleaned up automatically via a K8s CronJob that runs `clawhost cleanup`.
+
+```bash
+# Deploy the CronJob (default: every 2 hours)
+kubectl apply -f deploy/k8s/cronjob-cleanup.yaml
+
+# Check status
+kubectl -n clawhost get cronjob clawhost-cleanup
+kubectl -n clawhost get jobs --sort-by=.status.startTime
+
+# View logs of the latest run
+kubectl -n clawhost logs job/$(kubectl -n clawhost get jobs --sort-by=.status.startTime -o jsonpath='{.items[-1].metadata.name}')
+
+# Run manually
+kubectl -n clawhost create job --from=cronjob/clawhost-cleanup cleanup-manual
+```
+
+Cleanup behavior:
+- Finds bots where `expires_at` is older than the grace period (default 72h)
+- Deletes K8s Deployment + Service to free compute resources
+- Marks bot status as `deleted` (database record and PVC data preserved for recovery)
+- Processes in batches (default 50 per run), oldest expired first
+
+Configuration in `config.toml`:
+
+```toml
+[bot]
+cleanup_grace_hours = 72  # Grace period after expiration (hours)
+cleanup_batch_size = 50   # Max bots per cleanup run
+```
 
 ### Docker
 

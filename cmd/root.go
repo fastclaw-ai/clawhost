@@ -43,3 +43,16 @@ func initConfig() error {
 
 	return nil
 }
+
+// initConfigLight initializes config and DB without running migrations.
+func initConfigLight() error {
+	if err := util.InitConfig(configFile); err != nil {
+		return fmt.Errorf("init config failed: %w", err)
+	}
+
+	if err := util.InitDB(); err != nil {
+		return fmt.Errorf("init db failed: %w", err)
+	}
+
+	return nil
+}

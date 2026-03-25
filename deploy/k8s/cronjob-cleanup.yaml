@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: clawhost-cleanup
+  namespace: clawhost
+spec:
+  schedule: "0 */2 * * *" # Every 2 hours
+  concurrencyPolicy: Forbid # Skip if previous run is still active
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300 # Timeout after 5 minutes
+      template:
+        spec:
+          serviceAccountName: clawhost
+          restartPolicy: Never
+          containers:
+            - name: cleanup
+              image: clawhost:latest
+              imagePullPolicy: IfNotPresent
+              command: ["./clawhost", "cleanup"]
+              env:
+                - name: CLAWHOST_API_ADMIN_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: clawhost-secrets
+                      key: admin-token
+                - name: CLAWHOST_DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: clawhost-secrets
+                      key: db-password
+              volumeMounts:
+                - name: config
+                  mountPath: /app/config.toml
+                  subPath: config.toml
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          volumes:
+            - name: config
+              configMap:
+                name: clawhost-config
