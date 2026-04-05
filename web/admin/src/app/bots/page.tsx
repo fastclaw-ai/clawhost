@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { toast } from "sonner";
+import { BotDetail } from "@/components/bot-detail";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -135,8 +138,17 @@ function BotActions({
   );
 }
 
-export default function BotsPage() {
+function BotsPageInner() {
   const { isAuthed } = useAuth();
+  const searchParams = useSearchParams();
+  const detailBotId = searchParams.get("id");
+  const detailTab = searchParams.get("tab") || undefined;
+
+  // If ?id= is present, render bot detail view
+  if (detailBotId) {
+    if (!isAuthed) return null;
+    return <BotDetail botId={detailBotId} tab={detailTab} />;
+  }
   const [bots, setBots] = useState<Bot[]>([]);
   const [appMap, setAppMap] = useState<Record<string, App>>({});
   const [globalDomainTemplate, setGlobalDomainTemplate] = useState("");
@@ -305,7 +317,7 @@ export default function BotsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>App ID</TableHead>
+                  <TableHead>App</TableHead>
                   <TableHead>User ID</TableHead>
                   <TableHead>Domain</TableHead>
                   <TableHead>Status</TableHead>
@@ -316,11 +328,16 @@ export default function BotsPage() {
               <TableBody>
                 {filteredBots.map((bot) => (
                   <TableRow key={bot.id}>
-                    <TableCell className="font-medium">{bot.name}</TableCell>
                     <TableCell>
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                        {bot.app_id.slice(0, 8)}
-                      </code>
+                      <a
+                        href={`/admin/bots/?id=${bot.id}`}
+                        className="font-medium text-foreground hover:underline"
+                      >
+                        {bot.name}
+                      </a>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {appMap[bot.app_id]?.name || bot.app_id.slice(0, 8)}
                     </TableCell>
                     <TableCell>
                       <code className="text-xs bg-muted px-1 py-0.5 rounded">
@@ -372,7 +389,12 @@ export default function BotsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{bot.name}</span>
+                        <a
+                          href={`/admin/bots/?id=${bot.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {bot.name}
+                        </a>
                         <Badge
                           variant="outline"
                           className={`shrink-0 ${statusStyles[bot.status] || ""}`}
@@ -408,10 +430,8 @@ export default function BotsPage() {
                       )}
                     </div>
                     <div>
-                      <span className="text-foreground/50">App ID</span>
-                      <code className="block bg-muted px-1 py-0.5 rounded mt-0.5">
-                        {bot.app_id.slice(0, 8)}
-                      </code>
+                      <span className="text-foreground/50">App</span>
+                      <p className="truncate">{appMap[bot.app_id]?.name || bot.app_id.slice(0, 8)}</p>
                     </div>
                     <div>
                       <span className="text-foreground/50">Created</span>
@@ -520,5 +540,13 @@ export default function BotsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function BotsPage() {
+  return (
+    <Suspense fallback={<div className="p-4 md:p-6"><div className="text-center py-8 text-muted-foreground">Loading...</div></div>}>
+      <BotsPageInner />
+    </Suspense>
   );
 }
