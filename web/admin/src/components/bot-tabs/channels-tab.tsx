@@ -180,12 +180,18 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
 
     try {
       setSubmitting(true);
+      // OpenClaw requires allowFrom=["*"] when dmPolicy=open or groupPolicy=open
+      const allowFrom =
+        form.dmPolicy === "open" || form.groupPolicy === "open"
+          ? ["*"]
+          : undefined;
       await addChannel(botId, {
         channel: form.channelType,
         account: form.account || "default",
         enabled: form.enabled,
         dmPolicy: form.dmPolicy,
         groupPolicy: form.groupPolicy,
+        allowFrom,
         ...form.fields,
       });
       toast.success("Channel added");
