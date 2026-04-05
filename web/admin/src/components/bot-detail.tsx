@@ -18,6 +18,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/status-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ModelsTab } from "@/components/bot-tabs/models-tab";
+import { ChannelsTab } from "@/components/bot-tabs/channels-tab";
+import { SkillsTab } from "@/components/bot-tabs/skills-tab";
+import { DevicesTab } from "@/components/bot-tabs/devices-tab";
+import { ConfigTab } from "@/components/bot-tabs/config-tab";
 import {
   ArrowLeftIcon,
   CopyIcon,
@@ -213,21 +218,11 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="channels" disabled>
-            Channels
-          </TabsTrigger>
-          <TabsTrigger value="skills" disabled>
-            Skills
-          </TabsTrigger>
-          <TabsTrigger value="models" disabled>
-            Models
-          </TabsTrigger>
-          <TabsTrigger value="devices" disabled>
-            Devices
-          </TabsTrigger>
-          <TabsTrigger value="config" disabled>
-            Config
-          </TabsTrigger>
+          <TabsTrigger value="channels">Channels</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="models">Models</TabsTrigger>
+          <TabsTrigger value="devices">Devices</TabsTrigger>
+          <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 md:space-y-6 mt-4">
@@ -474,31 +469,20 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
           </div>
         </TabsContent>
 
-        {/* Placeholder tabs for future sprints */}
-        <TabsContent value="channels">
-          <div className="text-center py-12 text-muted-foreground">
-            Coming soon
-          </div>
+        <TabsContent value="channels" className="mt-4">
+          <ChannelsTab botId={botId} botStatus={bot.status} />
         </TabsContent>
-        <TabsContent value="skills">
-          <div className="text-center py-12 text-muted-foreground">
-            Coming soon
-          </div>
+        <TabsContent value="skills" className="mt-4">
+          <SkillsTab botId={botId} botStatus={bot.status} />
         </TabsContent>
-        <TabsContent value="models">
-          <div className="text-center py-12 text-muted-foreground">
-            Coming soon
-          </div>
+        <TabsContent value="models" className="mt-4">
+          <ModelsTab botId={botId} botStatus={bot.status} />
         </TabsContent>
-        <TabsContent value="devices">
-          <div className="text-center py-12 text-muted-foreground">
-            Coming soon
-          </div>
+        <TabsContent value="devices" className="mt-4">
+          <DevicesTab botId={botId} botStatus={bot.status} />
         </TabsContent>
-        <TabsContent value="config">
-          <div className="text-center py-12 text-muted-foreground">
-            Coming soon
-          </div>
+        <TabsContent value="config" className="mt-4">
+          <ConfigTab botId={botId} botStatus={bot.status} />
         </TabsContent>
       </Tabs>
 
