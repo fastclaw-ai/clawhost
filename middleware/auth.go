@@ -15,6 +15,8 @@ const (
 	ContextKeyApp = "authenticated_app"
 	// ContextKeyBot is the key used to store the authorized bot in context
 	ContextKeyBot = "authorized_bot"
+	// ContextKeyIsAdmin flags that the request was authenticated via admin token
+	ContextKeyIsAdmin = "is_admin"
 )
 
 // BearerAuth returns a middleware that validates Bearer token against the apps table
@@ -88,11 +90,15 @@ func BotOwnerAuth() echo.MiddlewareFunc {
 				return util.InternalError(c, "failed to get bot")
 			}
 
-			// If an app is in context, verify ownership
-			app := GetAppFromContext(c)
-			if app != nil {
-				if bot.AppID != app.ID {
-					return util.Forbidden(c, "not authorized to access this bot")
+			// Skip ownership check for admin-authenticated requests
+			isAdmin, _ := c.Get(ContextKeyIsAdmin).(bool)
+			if !isAdmin {
+				// If an app is in context, verify ownership
+				app := GetAppFromContext(c)
+				if app != nil {
+					if bot.AppID != app.ID {
+						return util.Forbidden(c, "not authorized to access this bot")
+					}
 				}
 			}
 
@@ -137,6 +143,7 @@ func AdminAuth() echo.MiddlewareFunc {
 				return util.Unauthorized(c, "invalid admin token")
 			}
 
+			c.Set(ContextKeyIsAdmin, true)
 			return next(c)
 		}
 	}

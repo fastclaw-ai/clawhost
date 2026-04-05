@@ -272,22 +272,29 @@ func writeWechatCredentials(bot *model.Bot, status *ilinkQRStatusResponse, name 
 	ns := k8s.GetNamespace()
 
 	// 1. Write credential file: ~/.openclaw/openclaw-weixin/accounts/{normalizedID}.json
-	nameField := ""
-	if name != "" {
-		nameField = fmt.Sprintf(`,"name":"%s"`, name)
+	credData := map[string]string{
+		"token":   status.BotToken,
+		"savedAt": time.Now().UTC().Format(time.RFC3339),
+		"baseUrl": baseURL,
+		"userId":  status.IlinkUserID,
 	}
-	credJSON := fmt.Sprintf(`{"token":"%s","savedAt":"%s","baseUrl":"%s","userId":"%s"%s}`,
-		status.BotToken, time.Now().UTC().Format(time.RFC3339), baseURL, status.IlinkUserID, nameField)
-	credCmd := fmt.Sprintf(
-		`mkdir -p /home/node/.openclaw/openclaw-weixin/accounts && cat > /home/node/.openclaw/openclaw-weixin/accounts/%s.json << 'EOF'
-%s
-EOF
-chmod 600 /home/node/.openclaw/openclaw-weixin/accounts/%s.json`,
-		normalizedID, credJSON, normalizedID)
-	if _, err := k8s.ExecInPod(ctx, ns, podName, "openclaw", []string{"sh", "-c", credCmd}); err != nil {
+	if name != "" {
+		credData["name"] = name
+	}
+	credJSON, _ := json.Marshal(credData)
+
+	// Create directory
+	k8s.ExecInPod(ctx, ns, podName, "openclaw", []string{"mkdir", "-p", "/home/node/.openclaw/openclaw-weixin/accounts"})
+
+	// Write credential file safely via stdin
+	credPath := fmt.Sprintf("/home/node/.openclaw/openclaw-weixin/accounts/%s.json", normalizedID)
+	if _, err := k8s.ExecInPodWithStdin(ctx, ns, podName, "openclaw",
+		[]string{"tee", credPath}, string(credJSON)); err != nil {
 		fmt.Printf("[Wechat] Failed to write credential file: %v\n", err)
 		return
 	}
+	// Set permissions
+	k8s.ExecInPod(ctx, ns, podName, "openclaw", []string{"chmod", "600", credPath})
 
 	// 2. Update account index: ~/.openclaw/openclaw-weixin/accounts.json
 	indexCmd := fmt.Sprintf(`node -e "
@@ -404,9 +411,10 @@ func WechatRemoveAccount(c echo.Context) error {
 	}
 	ns := k8s.GetNamespace()
 
-	// 1. Remove credential file
-	credCmd := fmt.Sprintf(`rm -f /home/node/.openclaw/openclaw-weixin/accounts/%s.json /home/node/.openclaw/openclaw-weixin/accounts/%s.sync.json`, accountID, accountID)
-	k8s.ExecInPod(ctx, ns, podName, "openclaw", []string{"sh", "-c", credCmd})
+	// 1. Remove credential files (no shell interpolation)
+	credFile := fmt.Sprintf("/home/node/.openclaw/openclaw-weixin/accounts/%s.json", accountID)
+	syncFile := fmt.Sprintf("/home/node/.openclaw/openclaw-weixin/accounts/%s.sync.json", accountID)
+	k8s.ExecInPod(ctx, ns, podName, "openclaw", []string{"rm", "-f", credFile, syncFile})
 
 	// 2. Remove from account index
 	indexCmd := fmt.Sprintf(`node -e "
