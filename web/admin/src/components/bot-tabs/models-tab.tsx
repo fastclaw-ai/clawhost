@@ -148,7 +148,15 @@ export function ModelsTab({ botId, botStatus }: ModelsTabProps) {
     error: providersError,
   } = useQuery({
     queryKey: ["bot-model-providers", botId],
-    queryFn: () => listModelProviders(botId).then((r) => r.data),
+    queryFn: () =>
+      listModelProviders(botId).then((r) => {
+        const data = r.data;
+        // API returns object { providerName: config } — normalize to array
+        if (Array.isArray(data)) return data;
+        return Object.entries(data as Record<string, unknown>).map(
+          ([name, cfg]) => ({ name, ...(cfg as object) }) as ModelProvider
+        );
+      }),
     enabled: isRunning,
   });
 
