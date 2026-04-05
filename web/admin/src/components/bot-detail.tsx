@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,7 +53,6 @@ interface BotDetailProps {
 }
 
 export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -162,7 +160,7 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
   const handleTabChange = (value: unknown) => {
     const tab = String(value);
     setActiveTab(tab);
-    router.push(`/admin/bots/?id=${botId}&tab=${tab}`);
+    window.history.replaceState(null, "", `/admin/bots/?id=${botId}&tab=${tab}`);
   };
 
   if (botLoading) {
@@ -184,11 +182,7 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
   if (!bot) {
     return (
       <div className="p-4 md:p-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push("/admin/bots/")}
-        >
+        <Button variant="ghost" size="sm" render={<a href="/admin/bots/" />}>
           <ArrowLeftIcon className="size-4 mr-1" /> Back to Bots
         </Button>
         <div className="text-center py-12 text-muted-foreground">
@@ -202,14 +196,9 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       {/* Header */}
       <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mb-2 -ml-2"
-          onClick={() => router.push("/admin/bots/")}
-        >
-          <ArrowLeftIcon className="size-4 mr-1" /> Bots
-        </Button>
+        <a href="/admin/bots/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2 -ml-2 px-2 py-1">
+          <ArrowLeftIcon className="size-4" /> Bots
+        </a>
         <div className="flex items-center gap-3">
           <h1 className="text-xl md:text-2xl font-bold">{bot.name}</h1>
           <StatusBadge status={bot.status} />
