@@ -193,6 +193,65 @@ func startServer() {
 
 		// Bot restart management (full pod spec rebuild)
 		admin.POST("/bots/restart", v1.RestartAllBots)
+
+		// Single bot detail & restart (admin)
+		admin.GET("/bots/:id", v1.AdminGetBot)
+		admin.POST("/bots/:id/restart", v1.AdminRestartBot)
+
+		// Admin access to bot sub-resources (reuses app-auth handlers)
+		// Admin requests bypass BotOwnerAuth ownership check via ContextKeyIsAdmin
+		adminBot := admin.Group("/bots/:id")
+		adminBot.Use(authmw.BotOwnerAuth()) // Loads bot into context; skips ownership for admin
+		{
+			// Skills management
+			adminBot.GET("/skills", v1.ListSkills)
+			adminBot.PUT("/skills/:name", v1.UpdateSkill)
+			adminBot.DELETE("/skills/:name", v1.DeleteSkill)
+
+			// Channels management
+			adminBot.POST("/channels", v1.AddChannel)
+			adminBot.GET("/channels", v1.ListChannels)
+			adminBot.DELETE("/channels/:channel", v1.RemoveChannel)
+
+			// Channel pairing
+			adminBot.GET("/channels/:channel/pairing", v1.ListChannelPairingRequests)
+			adminBot.POST("/channels/:channel/pairing/approve", v1.ApproveChannelPairing)
+			adminBot.POST("/channels/:channel/pairing/revoke", v1.RevokeChannelPairing)
+			adminBot.GET("/channels/:channel/pairing/users", v1.GetChannelPairedUsers)
+
+			// WeChat channel
+			adminBot.POST("/channels/wechat/login", v1.WechatLoginStart)
+			adminBot.GET("/channels/wechat/login/status", v1.WechatLoginStatus)
+			adminBot.GET("/channels/wechat/accounts", v1.WechatListAccounts)
+			adminBot.DELETE("/channels/wechat/accounts/:account_id", v1.WechatRemoveAccount)
+
+			// Devices
+			adminBot.GET("/devices", v1.ListDevices)
+			adminBot.POST("/devices/:request_id/approve", v1.ApproveDevice)
+			adminBot.DELETE("/devices/:device_id", v1.RevokeDevice)
+
+			// Model providers
+			adminBot.GET("/config/models", v1.ListModelProviders)
+			adminBot.POST("/config/models", v1.AddModelProvider)
+			adminBot.GET("/config/models/:provider", v1.GetModelProvider)
+			adminBot.PUT("/config/models/:provider", v1.UpdateModelProvider)
+			adminBot.DELETE("/config/models/:provider", v1.DeleteModelProvider)
+
+			// Agent defaults
+			adminBot.GET("/config/defaults", v1.GetAgentDefaults)
+			adminBot.PUT("/config/defaults", v1.SetAgentDefaults)
+
+			// Raw config
+			adminBot.GET("/config/raw", v1.GetBotRawConfig)
+			adminBot.PUT("/config/raw", v1.UpdateBotRawConfig)
+
+			// Bot lifecycle & info
+			adminBot.GET("", v1.GetBot)
+			adminBot.PUT("", v1.UpdateBot)
+			adminBot.GET("/status", v1.GetBotStatus)
+			adminBot.GET("/connect", v1.GetBotConnect)
+			adminBot.POST("/reset-token", v1.ResetBotToken)
+		}
 	}
 
 	// Health check

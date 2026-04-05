@@ -122,3 +122,46 @@ func ExecInPod(ctx context.Context, namespace, podName, containerName string, co
 
 	return stdout.String(), nil
 }
+
+// ExecInPodWithStdin executes a command in a pod container with stdin input.
+// This is safer than using heredoc in shell commands for writing file content.
+func ExecInPodWithStdin(ctx context.Context, namespace, podName, containerName string, command []string, stdinData string) (string, error) {
+	client := GetClient()
+	config := GetRestConfig()
+
+	if config == nil {
+		return "", fmt.Errorf("rest config not initialized")
+	}
+
+	req := client.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: containerName,
+			Command:   command,
+			Stdin:     true,
+			Stdout:    true,
+			Stderr:    true,
+			TTY:       false,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return "", fmt.Errorf("failed to create executor: %w", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	stdinReader := bytes.NewBufferString(stdinData)
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  stdinReader,
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+	if err != nil {
+		return "", fmt.Errorf("exec failed: %w, stderr: %s", err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}

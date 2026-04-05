@@ -48,12 +48,16 @@ func CreateApp(c echo.Context) error {
 	return util.Success(c, app)
 }
 
+// ListApps returns all apps. API tokens are redacted in list responses for security.
 func ListApps(c echo.Context) error {
 	apps, err := model.ListApps()
 	if err != nil {
 		return util.InternalError(c, "failed to list apps")
 	}
-
+	// Redact API tokens from list response
+	for _, app := range apps {
+		app.APIToken = ""
+	}
 	return util.Success(c, apps)
 }
 

@@ -53,21 +53,14 @@ func UpdateSkill(c echo.Context) error {
 }
 
 func writeSkillToPod(ctx context.Context, botID, skillName, content string) error {
-	client := k8s.GetClient()
 	namespace := k8s.GetNamespace()
 
 	// Get pod name
-	deploymentName := k8s.GetDeploymentName(botID)
-	pods, err := client.CoreV1().Pods(namespace).List(ctx, k8s.ListOptions(deploymentName))
+	podName, err := k8s.GetPodName(ctx, botID)
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return fmt.Errorf("failed to get pod: %w", err)
 	}
 
-	if len(pods.Items) == 0 {
-		return fmt.Errorf("no running pod found")
-	}
-
-	podName := pods.Items[0].Name
 	skillPath := fmt.Sprintf("/app/.openclaw/workspace/skills/%s", skillName)
 
 	// Create directory
@@ -76,10 +69,10 @@ func writeSkillToPod(ctx context.Context, botID, skillName, content string) erro
 		return fmt.Errorf("failed to create skill directory: %w", err)
 	}
 
-	// Write SKILL.md file
-	// Using echo with heredoc style
-	cmd := []string{"sh", "-c", fmt.Sprintf("cat > %s/SKILL.md << 'SKILLEOF'\n%s\nSKILLEOF", skillPath, content)}
-	_, err = k8s.ExecInPod(ctx, namespace, podName, "openclaw", cmd)
+	// Write SKILL.md file safely via stdin (no shell injection possible)
+	filePath := fmt.Sprintf("%s/SKILL.md", skillPath)
+	_, err = k8s.ExecInPodWithStdin(ctx, namespace, podName, "openclaw",
+		[]string{"tee", filePath}, content)
 	if err != nil {
 		return fmt.Errorf("failed to write skill file: %w", err)
 	}

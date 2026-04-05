@@ -46,10 +46,15 @@ func AdminCreateBot(c echo.Context) error {
 }
 
 // AdminListBots lists all bots across all apps (admin only)
+// Access tokens are redacted in list responses for security
 func AdminListBots(c echo.Context) error {
 	bots, err := model.ListAllBots()
 	if err != nil {
 		return util.InternalError(c, "failed to list bots")
+	}
+	// Redact access tokens from list response
+	for _, bot := range bots {
+		bot.AccessToken = ""
 	}
 	return util.Success(c, bots)
 }
@@ -151,4 +156,61 @@ func AdminDeleteBot(c echo.Context) error {
 	}
 
 	return util.Success(c, map[string]string{"message": "bot deleted"})
+}
+
+// AdminGetBot returns a single bot by ID (admin only)
+func AdminGetBot(c echo.Context) error {
+	botID := c.Param("id")
+	bot, err := model.GetBotByID(botID)
+	if err != nil {
+		return util.NotFound(c, "bot not found")
+	}
+	return util.Success(c, bot)
+}
+
+// AdminRestartBot restarts a bot by ID (admin only)
+func AdminRestartBot(c echo.Context) error {
+	botID := c.Param("id")
+	bot, err := model.GetBotByID(botID)
+	if err != nil {
+		return util.NotFound(c, "bot not found")
+	}
+
+	if bot.Status != model.BotStatusRunning {
+		return util.BadRequest(c, "bot is not running")
+	}
+
+	ctx := context.Background()
+
+	// Build current config
+	openclawConfig, _ := bot.GetOpenClawConfig()
+	k8sConfig := convertToK8sConfig(bot, openclawConfig)
+
+	// Replace deployment spec with rolling update
+	if err := k8s.ReplaceDeployment(ctx, bot.ID, bot.UserID, bot.AccessToken, k8sConfig); err != nil {
+		return util.InternalError(c, "failed to update deployment: "+err.Error())
+	}
+
+	// Recreate service to pick up port changes
+	k8s.DeleteService(ctx, bot.ID)
+	endpoint, err := k8s.CreateService(ctx, bot.ID, bot.UserID)
+	if err != nil {
+		return util.InternalError(c, "failed to create service: "+err.Error())
+	}
+
+	// Update endpoint
+	if err := model.UpdateBotStatus(bot.ID, model.BotStatusRunning, endpoint); err != nil {
+		c.Logger().Errorf("failed to update bot endpoint: %v", err)
+	}
+
+	// Sync config to pod after restart
+	go func() {
+		if k8sConfig.AccessToken != "" {
+			if err := k8s.WriteConfigToBot(context.Background(), bot.ID, k8sConfig, false); err != nil {
+				c.Logger().Errorf("failed to write config to bot: %v", err)
+			}
+		}
+	}()
+
+	return util.Success(c, bot)
 }
