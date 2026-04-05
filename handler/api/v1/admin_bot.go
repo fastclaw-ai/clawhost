@@ -92,7 +92,7 @@ func AdminStartBot(c echo.Context) error {
 	// Wait for pod ready in background, then update status
 	go func() {
 		bgCtx := context.Background()
-		_, err := k8s.WaitForPodReady(bgCtx, bot.ID, 120)
+		_, err := k8s.WaitForPodReady(bgCtx, bot.ID, 300)
 		if err != nil {
 			model.UpdateBotStatus(bot.ID, model.BotStatusError, endpoint)
 			return
