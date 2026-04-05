@@ -25,16 +25,19 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import {
-  PlusIcon,
-  Trash2Icon,
-  AlertCircleIcon,
-  MessageSquareIcon,
-} from "lucide-react";
+import { PlusIcon, Trash2Icon, AlertCircleIcon, MessageSquareIcon, UsersIcon, QrCodeIcon, CheckIcon, XIcon, RefreshCwIcon } from "lucide-react";
 import {
   listChannels,
   addChannel,
   removeChannel,
+  listPairingRequests,
+  approvePairing,
+  revokePairing,
+  listPairedUsers,
+  wechatLoginStart,
+  wechatLoginStatus,
+  wechatListAccounts,
+  wechatRemoveAccount,
   getErrorMessage,
   type Channel,
 } from "@/lib/api";
@@ -134,6 +137,9 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
   const [submitting, setSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showWechatLogin, setShowWechatLogin] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [wechatPolling, setWechatPolling] = useState(false);
 
   const { data: channels, isLoading } = useQuery({
     queryKey: ["channels", botId],
@@ -207,6 +213,38 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
     }
   };
 
+  const handleWechatLogin = async () => {
+    try {
+      const res = await wechatLoginStart(botId);
+      setQrCodeUrl(res.data.qrcode_url);
+      setShowWechatLogin(true);
+      // Start polling
+      setWechatPolling(true);
+      const poll = setInterval(async () => {
+        try {
+          const status = await wechatLoginStatus(botId);
+          if (status.data.status === "confirmed") {
+            clearInterval(poll);
+            setWechatPolling(false);
+            setShowWechatLogin(false);
+            setQrCodeUrl(null);
+            toast.success("WeChat connected!");
+            queryClient.invalidateQueries({ queryKey: ["channels", botId] });
+          } else if (status.data.status === "expired") {
+            clearInterval(poll);
+            setWechatPolling(false);
+            toast.error("QR code expired, please try again");
+          }
+        } catch {
+          clearInterval(poll);
+          setWechatPolling(false);
+        }
+      }, 3000);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
   // ── Render ───────────────────────────────────────────────────
 
   const currentFields = CHANNEL_FIELDS[form.channelType];
@@ -219,10 +257,14 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
         <h3 className="text-sm font-medium text-muted-foreground">
           Connected Channels
         </h3>
-        <Button size="sm" onClick={handleAddOpen}>
-          <PlusIcon className="size-4 mr-1" />
-          Add Channel
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleWechatLogin}>
+            <QrCodeIcon className="size-4 mr-1" /> WeChat Login
+          </Button>
+          <Button size="sm" onClick={handleAddOpen}>
+            <PlusIcon className="size-4 mr-1" /> Add Channel
+          </Button>
+        </div>
       </div>
 
       {/* Channel list */}
@@ -243,6 +285,7 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
           {channels.map((ch) => (
             <ChannelCard
               key={`${ch.channel}-${ch.account ?? "default"}`}
+              botId={botId}
               channel={ch}
               onDelete={() => setDeleteTarget(ch)}
             />
@@ -406,6 +449,32 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
         </DialogContent>
       </Dialog>
 
+      {/* WeChat QR Login Dialog */}
+      <Dialog open={showWechatLogin} onOpenChange={(open) => { if (!open) { setShowWechatLogin(false); setWechatPolling(false); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>WeChat QR Login</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrCodeUrl ? (
+              <>
+                <img src={qrCodeUrl} alt="WeChat QR Code" className="w-48 h-48 border rounded" />
+                <p className="text-sm text-muted-foreground text-center">
+                  Scan with WeChat to connect
+                </p>
+                {wechatPolling && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <RefreshCwIcon className="size-3 animate-spin" /> Waiting for scan...
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading QR code...</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={!!deleteTarget}
@@ -430,11 +499,12 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
 // ── Channel Card ───────────────────────────────────────────────
 
 interface ChannelCardProps {
+  readonly botId: string;
   readonly channel: Channel;
   readonly onDelete: () => void;
 }
 
-function ChannelCard({ channel, onDelete }: ChannelCardProps) {
+function ChannelCard({ botId, channel, onDelete }: ChannelCardProps) {
   const label =
     CHANNEL_LABELS[channel.channel as ChannelType] ?? channel.channel;
 
@@ -467,7 +537,147 @@ function ChannelCard({ channel, onDelete }: ChannelCardProps) {
         <p className="text-xs text-muted-foreground">
           Account: {channel.account ?? "default"}
         </p>
+        <PairingSection botId={botId} channelName={channel.channel} />
       </CardContent>
     </Card>
+  );
+}
+
+// ── Pairing Section ───────────────────────────────────────────
+
+function PairingSection({ botId, channelName }: { botId: string; channelName: string }) {
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [approveCode, setApproveCode] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const { data: pendingRequests } = useQuery({
+    queryKey: ["pairing-requests", botId, channelName],
+    queryFn: () => listPairingRequests(botId, channelName).then((r) => r.data ?? []),
+    enabled: expanded,
+  });
+
+  const { data: pairedUsers } = useQuery({
+    queryKey: ["paired-users", botId, channelName],
+    queryFn: () => listPairedUsers(botId, channelName).then((r) => r.data ?? []),
+    enabled: expanded,
+  });
+
+  const handleApprove = async (code: string) => {
+    try {
+      setActionLoading("approve");
+      await approvePairing(botId, channelName, code);
+      toast.success("Pairing approved");
+      setApproveCode("");
+      queryClient.invalidateQueries({ queryKey: ["pairing-requests", botId, channelName] });
+      queryClient.invalidateQueries({ queryKey: ["paired-users", botId, channelName] });
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRevoke = async (userId: string) => {
+    try {
+      setActionLoading(userId);
+      await revokePairing(botId, channelName, userId);
+      toast.success("Pairing revoked");
+      queryClient.invalidateQueries({ queryKey: ["paired-users", botId, channelName] });
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (!expanded) {
+    return (
+      <Button variant="ghost" size="sm" className="mt-1" onClick={() => setExpanded(true)}>
+        <UsersIcon className="size-3 mr-1" /> Manage Pairing
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t pt-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">Pairing Management</span>
+        <Button variant="ghost" size="sm" onClick={() => setExpanded(false)}>
+          <XIcon className="size-3" />
+        </Button>
+      </div>
+
+      {/* Approve with code */}
+      <div className="space-y-1">
+        <span className="text-xs text-muted-foreground">Approve by code</span>
+        <div className="flex gap-2">
+          <Input
+            value={approveCode}
+            onChange={(e) => setApproveCode(e.target.value)}
+            placeholder="Enter pairing code"
+            className="h-8 text-sm"
+          />
+          <Button
+            size="sm"
+            disabled={!approveCode.trim() || actionLoading === "approve"}
+            onClick={() => handleApprove(approveCode.trim())}
+          >
+            <CheckIcon className="size-3 mr-1" />
+            {actionLoading === "approve" ? "..." : "Approve"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Pending requests */}
+      {pendingRequests && pendingRequests.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Pending Requests ({pendingRequests.length})</span>
+          <div className="space-y-1">
+            {(pendingRequests as Array<Record<string, unknown>>).map((req, i) => (
+              <div key={i} className="flex items-center justify-between text-xs bg-muted rounded px-2 py-1">
+                <span className="font-mono truncate">{String(req.user_id || req.code || `request-${i}`)}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => handleApprove(String(req.code || ""))}
+                  disabled={!!actionLoading}
+                >
+                  Approve
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Paired users */}
+      {pairedUsers && (pairedUsers as unknown[]).length > 0 && (
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Paired Users ({(pairedUsers as unknown[]).length})</span>
+          <div className="space-y-1">
+            {(pairedUsers as Array<Record<string, unknown>>).map((user, i) => (
+              <div key={i} className="flex items-center justify-between text-xs bg-muted rounded px-2 py-1">
+                <span className="font-mono truncate">{String(user.user_id || user.id || `user-${i}`)}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-destructive"
+                  onClick={() => handleRevoke(String(user.user_id || user.id))}
+                  disabled={actionLoading === String(user.user_id || user.id)}
+                >
+                  Revoke
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(!pendingRequests || pendingRequests.length === 0) && (!pairedUsers || (pairedUsers as unknown[]).length === 0) && (
+        <p className="text-xs text-muted-foreground">No pairing requests or paired users</p>
+      )}
+    </div>
   );
 }
