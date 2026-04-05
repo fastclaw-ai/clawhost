@@ -358,9 +358,9 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
                   <p className="text-sm text-muted-foreground">
                     Bot must be running to show connection info
                   </p>
-                ) : connectInfo ? (
+                ) : connectInfo?.ready ? (
                   <>
-                    {connectInfo.ws_url && (
+                    {connectInfo.ws_url ? (
                       <div>
                         <span className="text-xs text-muted-foreground">
                           WebSocket URL
@@ -381,8 +381,8 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
                           </Button>
                         </div>
                       </div>
-                    )}
-                    {connectInfo.webchat_url && (
+                    ) : null}
+                    {connectInfo.webchat_url ? (
                       <div>
                         <span className="text-xs text-muted-foreground">
                           Web Chat
@@ -399,7 +399,7 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
                           <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
                         </div>
                       </div>
-                    )}
+                    ) : null}
                     <div>
                       <span className="text-xs text-muted-foreground">
                         Access Token
@@ -422,7 +422,9 @@ export function BotDetail({ botId, tab: initialTab }: BotDetailProps) {
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Loading...</p>
+                  <p className="text-sm text-muted-foreground">
+                    {connectInfo ? "Waiting for bot to be ready..." : "Loading..."}
+                  </p>
                 )}
               </CardContent>
             </Card>
