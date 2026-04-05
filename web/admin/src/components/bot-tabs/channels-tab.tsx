@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -139,6 +140,7 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
   const [deleting, setDeleting] = useState(false);
   const [showWechatLogin, setShowWechatLogin] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [wechatPolling, setWechatPolling] = useState(false);
 
   const { data: channels, isLoading } = useQuery({
@@ -223,6 +225,9 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
     try {
       const res = await wechatLoginStart(botId);
       setQrCodeUrl(res.data.qrcode_url);
+      // Generate QR code image from URL (the API returns a webpage URL, not an image)
+      const dataUrl = await QRCode.toDataURL(res.data.qrcode_url, { width: 256, margin: 2 });
+      setQrCodeDataUrl(dataUrl);
       setShowWechatLogin(true);
       // Start polling
       setWechatPolling(true);
@@ -462,9 +467,10 @@ export function ChannelsTab({ botId, botStatus }: ChannelsTabProps) {
             <DialogTitle>WeChat QR Login</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
-            {qrCodeUrl ? (
+            {qrCodeDataUrl ? (
               <>
-                <img src={qrCodeUrl} alt="WeChat QR Code" className="w-48 h-48 border rounded" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrCodeDataUrl} alt="WeChat QR Code" className="w-48 h-48 rounded" />
                 <p className="text-sm text-muted-foreground text-center">
                   Scan with WeChat to connect
                 </p>
