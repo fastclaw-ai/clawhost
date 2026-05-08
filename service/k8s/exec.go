@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -121,4 +122,48 @@ func ExecInPod(ctx context.Context, namespace, podName, containerName string, co
 	}
 
 	return stdout.String(), nil
+}
+
+// ExecStreamOptions configures a streaming exec call.
+type ExecStreamOptions struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	TTY    bool
+}
+
+// ExecStream runs a command in a pod container, streaming stdin/stdout/stderr
+// through the provided readers/writers. Use this when the command needs to
+// pipe binary data (e.g. tar) or produce live output.
+func ExecStream(ctx context.Context, namespace, podName, container string, command []string, opts ExecStreamOptions) error {
+	config := GetRestConfig()
+	if config == nil {
+		return fmt.Errorf("rest config not initialized")
+	}
+	client := GetClient()
+
+	req := client.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: container,
+			Command:   command,
+			Stdin:     opts.Stdin != nil,
+			Stdout:    opts.Stdout != nil,
+			Stderr:    opts.Stderr != nil,
+			TTY:       opts.TTY,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return fmt.Errorf("create executor: %w", err)
+	}
+	return exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  opts.Stdin,
+		Stdout: opts.Stdout,
+		Stderr: opts.Stderr,
+		Tty:    opts.TTY,
+	})
 }
