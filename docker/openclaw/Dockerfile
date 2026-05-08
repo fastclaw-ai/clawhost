@@ -13,14 +13,16 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
     npm install -g clawhub
 
 # Prepare staging dir for pre-installed plugins (needs root for /opt)
-RUN mkdir -p /opt/openclaw-plugins && chown node:node /opt/openclaw-plugins
+RUN mkdir -p /opt/openclaw-init && chown node:node /opt/openclaw-init
 
 USER node
 
-# Pre-install WeChat channel plugin, then move to /opt/ so it won't be
-# shadowed by the PVC mount on ~/.openclaw at runtime.
+# Pre-install WeChat channel plugin, then snapshot the entire ~/.openclaw
+# tree to /opt/openclaw-init/. The PVC mount on ~/.openclaw at runtime
+# would otherwise shadow this; the startup script restores the snapshot
+# on first boot.
 RUN openclaw plugins install "@tencent-weixin/openclaw-weixin" && \
-    mv /home/node/.openclaw/extensions/openclaw-weixin /opt/openclaw-plugins/ && \
+    cp -a /home/node/.openclaw/. /opt/openclaw-init/ && \
     rm -rf /home/node/.openclaw
 
 # PVC-backed working directory for skills, plugins, and user-installed packages

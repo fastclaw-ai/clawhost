@@ -254,10 +254,11 @@ if command -v node > /dev/null 2>&1 && [ -f /home/node/.openclaw/openclaw.json ]
     } catch(e) {}
   " 2>/dev/null
 fi
-# Copy pre-installed plugin from image if not already on PVC
-if [ ! -d /home/node/.openclaw/extensions/openclaw-weixin ] && [ -d /opt/openclaw-plugins/openclaw-weixin ]; then
-  mkdir -p /home/node/.openclaw/extensions
-  cp -r /opt/openclaw-plugins/openclaw-weixin /home/node/.openclaw/extensions/
+# Seed pre-installed plugins on first boot. Use -n so user data on an
+# existing PVC is never overwritten.
+if [ ! -f /home/node/.openclaw/.openclaw-init-done ] && [ -d /opt/openclaw-init ]; then
+  cp -an /opt/openclaw-init/. /home/node/.openclaw/
+  touch /home/node/.openclaw/.openclaw-init-done
 fi
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
