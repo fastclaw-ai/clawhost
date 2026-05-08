@@ -260,6 +260,8 @@ if [ ! -f /home/node/.openclaw/.openclaw-init-done ] && [ -d /opt/openclaw-init 
   cp -an /opt/openclaw-init/. /home/node/.openclaw/
   touch /home/node/.openclaw/.openclaw-init-done
 fi
+# Auto-migrate config schema between openclaw versions (idempotent no-op when valid)
+openclaw doctor --fix 2>/dev/null || true
 exec openclaw gateway --port %d --bind lan --allow-unconfigured --dev`, configJSON, gatewayPort)}
 									}
 									return []string{"openclaw", "gateway", "--port", fmt.Sprintf("%d", gatewayPort), "--bind", "lan", "--allow-unconfigured", "--dev"}
