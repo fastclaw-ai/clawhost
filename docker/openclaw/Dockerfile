@@ -12,16 +12,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
     ln -sf /usr/bin/python3 /usr/local/bin/python && \
     npm install -g clawhub
 
-# Wrapper script: if user has upgraded openclaw via "npm i -g openclaw",
-# use the PVC-installed openclaw.mjs directly (same as built-in execution method).
-# Always runs via "node <path>/openclaw.mjs" to avoid npm bin wrapper's systemd check.
-RUN printf '#!/bin/sh\n\
-PVC_MJS="$HOME/.openclaw/npm/lib/node_modules/openclaw/openclaw.mjs"\n\
-if [ -f "$PVC_MJS" ]; then\n\
-  exec node "$PVC_MJS" "$@"\n\
-fi\n\
-exec node /app/openclaw.mjs "$@"\n' > /usr/local/bin/openclaw && chmod +x /usr/local/bin/openclaw
-
 # Prepare staging dir for pre-installed plugins (needs root for /opt)
 RUN mkdir -p /opt/openclaw-plugins && chown node:node /opt/openclaw-plugins
 
@@ -29,7 +19,7 @@ USER node
 
 # Pre-install WeChat channel plugin, then move to /opt/ so it won't be
 # shadowed by the PVC mount on ~/.openclaw at runtime.
-RUN node /app/openclaw.mjs plugins install "@tencent-weixin/openclaw-weixin" && \
+RUN openclaw plugins install "@tencent-weixin/openclaw-weixin" && \
     mv /home/node/.openclaw/extensions/openclaw-weixin /opt/openclaw-plugins/ && \
     rm -rf /home/node/.openclaw
 
