@@ -54,15 +54,39 @@ func (ap *AccessPod) AbsPath(rel string) (string, error) {
 // + subpath mounted.
 func OpenAccess(ctx context.Context, botID string) (*AccessPod, error) {
 	if podName, err := GetPodName(ctx, botID); err == nil {
-		return &AccessPod{
-			Namespace: GetNamespace(),
-			Name:      podName,
-			Container: "openclaw",
-			MountPath: "/home/node/.openclaw",
-			BotID:     botID,
-		}, nil
+		ns := GetNamespace()
+		container, mountPath, ok := findDataContainer(ctx, ns, podName)
+		if ok {
+			return &AccessPod{
+				Namespace: ns,
+				Name:      podName,
+				Container: container,
+				MountPath: mountPath,
+				BotID:     botID,
+			}, nil
+		}
+		// Pod found but no container has the openclaw data mounted — fall back
+		// to spawning a temp pod rather than guessing.
 	}
 	return spawnAccessPod(ctx, botID)
+}
+
+// findDataContainer returns the first container in the pod that has the
+// bot's data root mounted (mountPath == /home/node/.openclaw and no
+// subPath, i.e. the full bot subPath is in scope).
+func findDataContainer(ctx context.Context, namespace, podName string) (container, mountPath string, ok bool) {
+	pod, err := GetClient().CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return "", "", false
+	}
+	for _, c := range pod.Spec.Containers {
+		for _, vm := range c.VolumeMounts {
+			if vm.MountPath == "/home/node/.openclaw" {
+				return c.Name, vm.MountPath, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 func spawnAccessPod(ctx context.Context, botID string) (*AccessPod, error) {
