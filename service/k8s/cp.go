@@ -72,6 +72,45 @@ func CopyToPod(ctx context.Context, ap *AccessPod, localPath, remoteAbsPath stri
 	return wErr
 }
 
+// BotDataExportExcludes are tar --exclude patterns applied when archiving a
+// bot's data root for export — runtime-derivable junk we don't want in the
+// archive.
+var BotDataExportExcludes = []string{
+	"node_modules",
+	".cache",
+	".npm",
+	".openclaw-init-done",
+}
+
+// ArchiveFromPod streams a tar.gz of the bot's data root from the access pod
+// to w. The archive contains a single top-level directory (the basename of
+// ap.MountPath, e.g. ".openclaw"), so extraction yields a clean folder rather
+// than scattering files into cwd.
+//
+// excludes are tar --exclude patterns (matched against names inside the
+// archive); pass nil for none.
+func ArchiveFromPod(ctx context.Context, ap *AccessPod, w io.Writer, excludes []string) error {
+	parent := path.Dir(ap.MountPath)
+	base := path.Base(ap.MountPath)
+
+	var buf strings.Builder
+	buf.WriteString("tar -cf - ")
+	for _, e := range excludes {
+		buf.WriteString("--exclude=")
+		buf.WriteString(shellQuote(e))
+		buf.WriteString(" ")
+	}
+	buf.WriteString("-C ")
+	buf.WriteString(shellQuote(parent))
+	buf.WriteString(" ")
+	buf.WriteString(shellQuote(base))
+	buf.WriteString(" | gzip -c")
+
+	return ExecStream(ctx, ap.Namespace, ap.Name, ap.Container,
+		[]string{"sh", "-c", buf.String()},
+		ExecStreamOptions{Stdout: w, Stderr: os.Stderr})
+}
+
 // CopyFromPod streams a single file from the pod to localPath.
 func CopyFromPod(ctx context.Context, ap *AccessPod, remoteAbsPath, localPath string) error {
 	remoteDir := path.Dir(remoteAbsPath)

@@ -134,7 +134,7 @@ func spawnAccessPod(ctx context.Context, botID string) (*AccessPod, error) {
 					Image:   "alpine:3.19",
 					Command: []string{"sleep", "3600"},
 					VolumeMounts: []corev1.VolumeMount{
-						{Name: "data", MountPath: "/pvc", SubPath: botID},
+						{Name: "data", MountPath: "/data/.openclaw", SubPath: botID},
 					},
 				},
 			},
@@ -173,7 +173,7 @@ func spawnAccessPod(ctx context.Context, botID string) (*AccessPod, error) {
 		Namespace: namespace,
 		Name:      podName,
 		Container: "shell",
-		MountPath: "/pvc",
+		MountPath: "/data/.openclaw",
 		BotID:     botID,
 		cleanup:   cleanup,
 	}, nil

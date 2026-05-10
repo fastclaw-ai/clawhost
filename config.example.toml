@@ -27,6 +27,12 @@ cleanup_grace_hours = 72
 # Max number of bots to clean up per run. Default: 50
 cleanup_batch_size = 50
 
+[export]
+# Maximum compressed (.tar.gz) size for `clawhost export` / GET /bots/:id/export.
+# Exports larger than this are refused with a "contact admin" message.
+# Default: 1073741824 (1 GiB).
+max_size_bytes = 1073741824
+
 [domain]
 api_domain = "clawhost.ai"
 bot_domain_suffix = "clawhost.ai"

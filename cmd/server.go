@@ -150,6 +150,9 @@ func startServer() {
 		// Raw openclaw.json config (read/write from running pod)
 		botAPI.GET("/config/raw", v1.GetBotRawConfig)
 		botAPI.PUT("/config/raw", v1.UpdateBotRawConfig)
+
+		// Data export: stream tar.gz of ~/.openclaw
+		botAPI.GET("/export", v1.ExportBotData)
 	}
 
 	// Admin API routes: /bot/api/v1/admin/* (requires admin token)
