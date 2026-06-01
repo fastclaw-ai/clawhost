@@ -528,6 +528,30 @@ func DeleteDeployment(ctx context.Context, botID string) error {
 	return nil
 }
 
+// ListBotDeploymentIDs returns the bot IDs of all openclaw bot deployments
+// currently present in the cluster, read from the "bot-id" label. This reflects
+// actual K8s state (not the DB), so it catches pods even when the DB status has
+// drifted out of sync.
+func ListBotDeploymentIDs(ctx context.Context) ([]string, error) {
+	client := GetClient()
+	namespace := GetNamespace()
+
+	list, err := client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app=openclaw",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list bot deployments: %w", err)
+	}
+
+	ids := make([]string, 0, len(list.Items))
+	for i := range list.Items {
+		if id := list.Items[i].Labels["bot-id"]; id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
 func GetDeploymentStatus(ctx context.Context, botID string) (bool, error) {
 	client := GetClient()
 	namespace := GetNamespace()
