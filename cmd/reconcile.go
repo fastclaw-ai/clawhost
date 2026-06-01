@@ -110,37 +110,40 @@ func reconcileBotStatus() {
 		wg.Wait()
 	}
 
-	// Phase 2: inactive bots — clean up orphaned K8s resources
+	// Phase 2: inactive bots — clean up orphaned K8s resources.
+	// Instead of a GET per bot (which throttles hard at hundreds of bots), do a
+	// single LIST of all bot deployments and check membership locally.
 	if len(inactiveBots) > 0 {
 		log.Printf("[reconcile] checking %d inactive bot(s) for orphaned resources", len(inactiveBots))
-		for _, bot := range inactiveBots {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(bot *model.Bot) {
-				defer wg.Done()
-				defer func() { <-sem }()
 
-				exists, err := k8s.GetDeploymentStatus(ctx, bot.ID)
-				if err != nil {
-					return // can't check, skip
-				}
-				// exists returns true if readyReplicas > 0, but we also need
-				// to catch deployments with 0 ready replicas (CrashLoopBackOff etc.)
-				// So check if deployment exists at all via GetDeploymentStatusInfo
-				info, err := k8s.GetDeploymentStatusInfo(ctx, bot.ID)
-				if err != nil || info.Status == "not_found" {
-					return // no K8s resources, nothing to clean
-				}
-				_ = exists
+		liveIDs, err := k8s.ListBotDeploymentIDs(ctx)
+		if err != nil {
+			log.Printf("[reconcile] failed to list bot deployments: %v", err)
+		} else {
+			live := make(map[string]struct{}, len(liveIDs))
+			for _, id := range liveIDs {
+				live[id] = struct{}{}
+			}
 
-				log.Printf("[reconcile] bot %s (%s): DB=%s but K8s deployment exists (ready=%d), cleaning up",
-					bot.ID, bot.Name, bot.Status, info.ReadyReplicas)
-				k8s.DeleteDeployment(ctx, bot.ID)
-				k8s.DeleteService(ctx, bot.ID)
-				fixed.Add(1)
-			}(bot)
+			for _, bot := range inactiveBots {
+				if _, ok := live[bot.ID]; !ok {
+					continue // no deployment, nothing to clean
+				}
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(bot *model.Bot) {
+					defer wg.Done()
+					defer func() { <-sem }()
+
+					log.Printf("[reconcile] bot %s (%s): DB=%s but K8s deployment exists, cleaning up",
+						bot.ID, bot.Name, bot.Status)
+					k8s.DeleteDeployment(ctx, bot.ID)
+					k8s.DeleteService(ctx, bot.ID)
+					fixed.Add(1)
+				}(bot)
+			}
+			wg.Wait()
 		}
-		wg.Wait()
 	}
 
 	log.Printf("[reconcile] fixed %d bot(s)", fixed.Load())

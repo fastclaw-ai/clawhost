@@ -39,6 +39,20 @@ func InitClient() error {
 		return fmt.Errorf("failed to build k8s config: %w", err)
 	}
 
+	// Raise client-side rate limits. The default client-go limiter (QPS 5,
+	// Burst 10) throttles bulk operations like reconcile/cleanup that touch
+	// hundreds of bots, adding seconds of client-side wait per request.
+	qps := viper.GetInt("kubernetes.client_qps")
+	if qps <= 0 {
+		qps = 50
+	}
+	burst := viper.GetInt("kubernetes.client_burst")
+	if burst <= 0 {
+		burst = 100
+	}
+	config.QPS = float32(qps)
+	config.Burst = burst
+
 	restConfig = config
 
 	clientset, err = kubernetes.NewForConfig(config)
